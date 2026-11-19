@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <defs>
+    <!-- Vibrant Nordrive Metallic Blue Gradient -->
+    <linearGradient id="nGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0284C7" />
+      <stop offset="50%" stop-color="#0EA5E9" />
+      <stop offset="100%" stop-color="#38BDF8" />
+    </linearGradient>
+
+    <!-- Glass Highlight Sheen -->
+    <linearGradient id="sheenGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.4" />
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0" />
+    </linearGradient>
+
+    <!-- Mask to create uniform 6px transparent gap separation between Arrow and Stems -->
+    <mask id="gapMask">
+      <!-- White background shows everything -->
+      <rect x="0" y="0" width="100" height="100" fill="#FFFFFF" />
+      <!-- Black diagonal stroke cuts out a clean 6px gap around the arrow -->
+      <path d="M 10 82 L 80 12 L 88 20 L 18 90 Z" fill="none" stroke="#000000" stroke-width="7.5" stroke-linecap="square" />
+    </mask>
+
+    <filter id="neonGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="2" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <g filter="url(#neonGlow)">
+    <!-- THE N STEMS (Masked to create the crisp 6px gap around the arrow) -->
+    <g mask="url(#gapMask)">
+      <!-- Left Stem of N -->
+      <rect x="18" y="20" width="18" height="60" fill="url(#nGrad)" />
+      
+      <!-- Right Stem of N -->
+      <rect x="64" y="20" width="18" height="60" fill="url(#nGrad)" />
+    </g>
+
+    <!-- THE ASCENDING DIAGONAL ARROW (Crisp 45° Shaft & Balanced Arrowhead) -->
+    <!-- Diagonal Shaft -->
+    <path d="M 14 78 L 70 22 L 78 30 L 22 86 Z" fill="url(#nGrad)" />
+
+    <!-- Arrowhead at Top Right (Properly proportioned height) -->
+    <polygon points="88,10 62,20 78,36" fill="#38BDF8" stroke="#FFFFFF" stroke-width="0.8" />
+    
+    <!-- Metallic Specular Glass Sheen Overlay -->
+    <polygon points="88,10 68,18 78,28" fill="url(#sheenGrad)" />
+  </g>
+</svg>

@@ -1,0 +1,14 @@
+# Robots.txt for Nordrive Flotte VTC
+User-agent: *
+Allow: /
+Allow: /simulateur
+Allow: /assurance
+Allow: /comparatif
+
+# Block Search Engines from private Admin Login & ERP pages
+Disallow: /admin-login
+Disallow: /admin
+Disallow: /*?key=*
+
+# Sitemap location
+Sitemap: https://nordrive-flotte.com/sitemap.xml
