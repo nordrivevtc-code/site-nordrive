@@ -1,11 +1,13 @@
-import { useState, useCallback } from 'react';
-import { Navbar } from './components/Navbar';
+import { useState, useCallback, lazy, Suspense } from 'react';
 import { PublicPortal } from './components/PublicPortal';
-import { DriverCRM } from './components/DriverCRM';
-import { AccountingPayroll } from './components/AccountingPayroll';
-import { ApiIntegrationGuide } from './components/ApiIntegrationGuide';
-import { ApiSettings } from './components/ApiSettings';
 import { AdminLogin, isAdminAuthenticated } from './components/AdminLogin';
+
+// Back-office chargé à la demande : les visiteurs du site public ne téléchargent pas ces écrans.
+const Navbar = lazy(() => import('./components/Navbar').then(m => ({ default: m.Navbar })));
+const DriverCRM = lazy(() => import('./components/DriverCRM').then(m => ({ default: m.DriverCRM })));
+const AccountingPayroll = lazy(() => import('./components/AccountingPayroll').then(m => ({ default: m.AccountingPayroll })));
+const ApiIntegrationGuide = lazy(() => import('./components/ApiIntegrationGuide').then(m => ({ default: m.ApiIntegrationGuide })));
+const ApiSettings = lazy(() => import('./components/ApiSettings').then(m => ({ default: m.ApiSettings })));
 import { useDrivers, usePayrollWeeks, useFleetSettings } from './hooks/useSupabaseData';
 import { isSupabaseConfigured } from './lib/supabase';
 import { round2, mergeWeeklyPayrolls, cleanIban, normalizeDriverName } from './lib/statementParsers';
@@ -74,9 +76,13 @@ export function App() {
       const cleanPhone = (p: string) => p.replace(/\s+/g, '').replace(/[-()]/g, '');
       const newPhoneClean = cleanPhone(newDriverInput.phone);
 
-      const existingIndex = prev.findIndex(d => 
+      const newEmailClean = (newDriverInput.email || '').toLowerCase().trim();
+
+      // L'e-mail est facultatif : on ne compare les e-mails que s'ils sont renseignés,
+      // sinon deux chauffeurs sans e-mail seraient fusionnés à tort.
+      const existingIndex = prev.findIndex(d =>
         cleanPhone(d.phone) === newPhoneClean ||
-        d.email.toLowerCase().trim() === newDriverInput.email.toLowerCase().trim()
+        (newEmailClean !== '' && (d.email || '').toLowerCase().trim() === newEmailClean)
       );
 
       if (existingIndex !== -1) {
@@ -393,6 +399,7 @@ export function App() {
             '☁ Cloud synchronisé'}
         </div>
       )}
+      <Suspense fallback={<div style={{ padding: 40, textAlign: 'center', color: '#64748B', fontSize: 13 }}>Chargement…</div>}>
       {activeTab !== 'site_public' && (
         <Navbar
           activeTab={activeTab}
@@ -445,6 +452,7 @@ export function App() {
 
         {activeTab === 'parametres_api' && <ApiSettings />}
       </main>
+      </Suspense>
     </div>
   );
 }

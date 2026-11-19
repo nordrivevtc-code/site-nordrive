@@ -17,12 +17,11 @@ import {
   X,
   ArrowRight,
   FileText,
-  CheckCircle2,
-  Wallet,
-  Banknote
+  CheckCircle2
 } from 'lucide-react';
 import type { Driver, DriverDocument, PlatformType } from '../types/fleet';
 import { Background3D } from './Background3D';
+import { HomePage } from './HomePage';
 import { CustomCursor } from './CustomCursor';
 import { SignaturePad } from './SignaturePad';
 
@@ -81,10 +80,13 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({ onRegisterDriver, on
   const [scrolled, setScrolled] = useState<boolean>(false);
 
   const [isMobile, setIsMobile] = useState<boolean>(typeof window !== 'undefined' ? window.innerWidth < 900 : false);
+  // Menu compact (hamburger) tant que la barre de navigation complète ne tient pas dans la largeur
+  const [isNarrow, setIsNarrow] = useState<boolean>(typeof window !== 'undefined' ? window.innerWidth < 1180 : false);
 
   useEffect(() => {
     const handleResize = () => {
       setIsMobile(window.innerWidth < 900);
+      setIsNarrow(window.innerWidth < 1180);
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
@@ -105,7 +107,6 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({ onRegisterDriver, on
 
 
   // Display period for examples
-  const [examplePeriod, setExamplePeriod] = useState<'semaine' | 'mois'>('semaine');
   const [beforeAfterActive, setBeforeAfterActive] = useState<'before' | 'after'>('after');
 
   // FAQ Accordion Toggle
@@ -145,14 +146,14 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({ onRegisterDriver, on
   const [referralForm, setReferralForm] = useState({
     referrerName: '',
     referrerPhone: '',
-    friendFirstName: '',
-    friendLastName: '',
+    friendName: '',
     friendPhone: '',
-    friendEmail: '',
-    friendHasVtc: false,
-    friendHasVehicle: false
   });
   const [referralSubmitted, setReferralSubmitted] = useState<boolean>(false);
+  const [referralError, setReferralError] = useState<string>('');
+  const digitsOnly = (p: string) => p.replace(/\D/g, '').replace(/^33/, '0');
+  // Tolérant : accepte 06 12 34 56 78, 0612345678, +33 6 12 34 56 78, etc.
+  const FR_PHONE_PATTERN = '^\\+?[0-9][0-9\\s.\\-]{8,17}$';
 
   // Insurance Form State
   const [insuranceForm, setInsuranceForm] = useState({
@@ -268,6 +269,25 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({ onRegisterDriver, on
       }
     }
   };
+
+  // Liens de navigation (source unique pour le menu desktop et le menu mobile)
+  type NavLink = { label: string; href: string; scroll?: string; accent?: 'blue' | 'gold'; mobileOnly?: boolean };
+  const navLinks: NavLink[] = [
+    { label: 'Comment ça marche', href: '/#calcul-gains', scroll: 'calcul-gains' },
+    { label: 'Comparatif', href: '/comparatif' },
+    { label: 'Assurance VTC', href: '/assurance', accent: 'blue' },
+    { label: 'Parrainage 200€', href: '/parrainage', accent: 'gold' },
+    { label: 'FAQ', href: '/faq' },
+    { label: 'Simulateur', href: '/simulateur', mobileOnly: true },
+    { label: 'Qui sommes-nous', href: '/qui-sommes-nous', mobileOnly: true },
+    { label: 'Contact', href: '/contact', mobileOnly: true },
+  ];
+  const goTo = (e: React.MouseEvent<HTMLAnchorElement>, link: NavLink) => {
+    if (link.scroll) scrollToSection(e, link.scroll);
+    else navigateTo(e, link.href);
+    setMobileMenuOpen(false);
+  };
+  const navColor = (a?: 'blue' | 'gold') => (a === 'gold' ? '#F5C451' : a === 'blue' ? '#38BDF8' : 'rgba(255, 255, 255, 0.88)');
 
   // Scroll Reveal Observer for Smooth Entrance Animations
   useEffect(() => {
@@ -421,13 +441,12 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({ onRegisterDriver, on
     const vehicleLabel = formData.hasVehicle ? `Oui (${formData.vehicleModel || 'Non specifie'} - ${formData.vehiclePlate || 'N/A'})` : 'Non';
     const platformsLabel = formData.platforms.map(p => p.toUpperCase()).join(', ') || 'Aucune';
 
+    // Pièces réellement demandées dans le formulaire (le mémo d'assurance et la signature restent facultatifs)
     const allDocsUploaded = !!(
       cloudinaryUrls.vtcRecto &&
       cloudinaryUrls.vtcVerso &&
       cloudinaryUrls.rcCirculation &&
-      cloudinaryUrls.carteGrise &&
-      cloudinaryUrls.memoAssurance &&
-      cloudinaryUrls.signature
+      cloudinaryUrls.carteGrise
     );
 
     let waMessage = '';
@@ -453,8 +472,6 @@ Je vous contacte pour finaliser et valider mon rattachement Nordrive.`;
       if (!cloudinaryUrls.vtcVerso) missingLabels.push('Carte VTC Verso');
       if (!cloudinaryUrls.rcCirculation) missingLabels.push('RC Circulation');
       if (!cloudinaryUrls.carteGrise) missingLabels.push('Carte Grise');
-      if (!cloudinaryUrls.memoAssurance) missingLabels.push('Memo Assurance');
-      if (!cloudinaryUrls.signature) missingLabels.push('Photo Signature');
 
       waMessage = `*** NOUVELLE INSCRIPTION CHAUFFEUR NORDRIVE ***
 
@@ -525,15 +542,20 @@ ${contactForm.email ? `- Email : ${contactForm.email}\n` : ''}- Message : ${cont
   const handleReferralSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    const fName = referralForm.friendFirstName || referralForm.friendLastName || 'Mon Ami';
-    const lName = referralForm.friendFirstName ? referralForm.friendLastName : '';
+    if (digitsOnly(referralForm.referrerPhone) === digitsOnly(referralForm.friendPhone)) {
+      setReferralError("Votre numéro et celui de votre ami sont identiques. Indiquez le numéro de l'ami à parrainer.");
+      return;
+    }
+    setReferralError('');
+
+    const fName = referralForm.friendName.trim() || 'Mon Ami';
 
     const waReferralMessage = `*** DEMANDE DE PARRAINAGE (200€) - NORDRIVE ***
 
 - Le Parrain (Moi) : ${referralForm.referrerName}
 - Mon Téléphone : ${referralForm.referrerPhone}
 
-- Mon Ami Parrainé : ${fName} ${lName}
+- Mon Ami Parrainé : ${fName}
 - Téléphone Ami : ${referralForm.friendPhone}
 
 Je parraine cet ami pour qu'il rejoigne la flotte Nordrive VTC. Merci d'enregistrer ma prime de 200€ !`;
@@ -544,9 +566,8 @@ Je parraine cet ami pour qu'il rejoigne la flotte Nordrive VTC. Merci d'enregist
     referralData.append('subject', `Nouveau Parrainage VTC par ${referralForm.referrerName}`);
     referralData.append('Nom Parrain', referralForm.referrerName);
     referralData.append('Tel Parrain', referralForm.referrerPhone);
-    referralData.append('Nom Ami', `${fName} ${lName}`);
+    referralData.append('Nom Ami', fName);
     referralData.append('Tel Ami', referralForm.friendPhone);
-    referralData.append('Carte VTC Ami', 'Oui (Confirmé)');
 
     fetch('https://api.web3forms.com/submit', {
       method: 'POST',
@@ -708,9 +729,7 @@ Bonjour, je souhaite recevoir mon devis d'assurance VTC.`;
       optionalDocs.vtcRecto &&
       optionalDocs.vtcVerso &&
       optionalDocs.rcCirculation &&
-      optionalDocs.carteGrise &&
-      optionalDocs.memoAssurance &&
-      optionalDocs.signature
+      optionalDocs.carteGrise
     );
     
     return (
@@ -720,16 +739,12 @@ Bonjour, je souhaite recevoir mon devis d'assurance VTC.`;
           <form onSubmit={handleSubmit}>
 
             {/* HEADER — Value Anchor */}
-            <div style={{ textAlign: 'center', marginBottom: '16px', paddingBottom: '12px', borderBottom: '1px solid rgba(229, 178, 70, 0.2)' }}>
-              <div style={{ display: 'inline-block', background: 'rgba(229, 178, 70, 0.15)', border: '1px solid #E5B246', color: '#FFE29F', fontSize: isMobile ? '10px' : '11px', fontWeight: 800, padding: '4px 14px', borderRadius: '100px', marginBottom: '8px', letterSpacing: '0.5px' }}>
-                ⭐ DOSSIER EN LIGNE OFFICIEL
-              </div>
-              <h3 style={{ fontSize: isMobile ? '20px' : '24px', fontWeight: 900, color: '#FFF', letterSpacing: '-0.5px', lineHeight: 1.2, marginBottom: '4px' }}>
-                Rattachement Flotte Nordrive <br />
-                <span className="flyer-gold-text" style={{ fontSize: isMobile ? '22px' : '27px' }}>50€ / semaine si vous travaillez</span>
+            <div style={{ marginBottom: '16px', paddingBottom: '12px', borderBottom: '1px solid rgba(229, 178, 70, 0.2)' }}>
+              <h3 style={{ fontSize: isMobile ? '19px' : '21px', fontWeight: 800, color: '#FFF', letterSpacing: '-0.3px', lineHeight: 1.25, margin: 0 }}>
+                Votre dossier de rattachement
               </h3>
-              <p style={{ fontSize: isMobile ? '11px' : '12px', color: '#CBD5E1', lineHeight: 1.4, margin: 0 }}>
-                Rattachement en <strong style={{ color: '#FFF' }}>1h chrono</strong> · Contrat CDI / CDD · 0€ si vacances · Véhicules +12 ans acceptés
+              <p style={{ fontSize: '13px', color: '#A9B6C7', lineHeight: 1.45, margin: '4px 0 0' }}>
+                4 champs obligatoires. Les documents peuvent suivre plus tard.
               </p>
             </div>
 
@@ -760,6 +775,7 @@ Bonjour, je souhaite recevoir mon devis d'assurance VTC.`;
               <input
                 type="text"
                 required
+                autoComplete="name"
                 placeholder="Ex: Jean Dupont"
                 value={formData.lastName}
                 onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
@@ -771,7 +787,11 @@ Bonjour, je souhaite recevoir mon devis d'assurance VTC.`;
               <label className="dd-form-label">📱 Téléphone WhatsApp *</label>
               <input
                 type="tel"
+                inputMode="tel"
+                autoComplete="tel"
                 required
+                pattern={FR_PHONE_PATTERN}
+                title="Numéro de téléphone, par exemple 06 12 34 56 79"
                 placeholder="06 12 34 56 79"
                 value={formData.phone}
                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
@@ -785,6 +805,7 @@ Bonjour, je souhaite recevoir mon devis d'assurance VTC.`;
                 <input
                   type="text"
                   required
+                  autoComplete="address-level2"
                   placeholder="Paris, Lyon, Lille..."
                   value={formData.city}
                   onChange={(e) => setFormData({ ...formData, city: e.target.value })}
@@ -1033,7 +1054,7 @@ Bonjour, je souhaite recevoir mon devis d'assurance VTC.`;
                 required
                 checked={rgpdConsent}
                 onChange={e => setRgpdConsent(e.target.checked)}
-                style={{ margin: 0, marginTop: '3px', accentColor: '#38BDF8', width: '16px', height: '16px', flexShrink: 0, cursor: 'pointer' }}
+                style={{ margin: 0, marginTop: '3px', accentColor: '#E5C158', width: '16px', height: '16px', flexShrink: 0, cursor: 'pointer' }}
               />
               <span style={{ fontSize: '11px', color: '#94A3B8', lineHeight: 1.5 }}>
                 J'accepte que mes informations soient traitées par <strong style={{ color: '#CBD5E1' }}>Nordrive Services</strong> pour créer mon dossier de rattachement VTC. *
@@ -1042,7 +1063,7 @@ Bonjour, je souhaite recevoir mon devis d'assurance VTC.`;
 
             <button 
               type="submit" 
-              className="dd-btn dd-btn-primary" 
+              className="dd-btn dd-btn-gold"
               disabled={isSubmitting || !rgpdConsent}
               style={{ 
                 width: '100%', 
@@ -1056,22 +1077,12 @@ Bonjour, je souhaite recevoir mon devis d'assurance VTC.`;
                 cursor: (isSubmitting || !rgpdConsent) ? 'not-allowed' : 'pointer'
               }}
             >
-              <span>{isSubmitting ? "⏳ Validation en cours..." : "🏔️ Je rejoins la Flotte Nordrive →"}</span>
+              <span>{isSubmitting ? "Validation en cours…" : "Je rejoins la flotte Nordrive →"}</span>
             </button>
 
-            {/* GUARANTEE STRIP */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px', marginTop: '12px' }}>
-              {[
-                { icon: '🔒', label: 'Sans engagement' },
-                { icon: '⚡', label: 'Réponse sous 1h' },
-                { icon: '🎁', label: '1ère sem. offerte' },
-              ].map(({ icon, label }) => (
-                <div key={label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', background: 'rgba(56, 189, 248, 0.05)', border: '1px solid rgba(56, 189, 248, 0.12)', borderRadius: '10px', padding: '8px 4px' }}>
-                  <span style={{ fontSize: '14px' }}>{icon}</span>
-                  <span style={{ fontSize: '10px', fontWeight: 700, color: '#7DD3FC', textAlign: 'center', lineHeight: 1.2 }}>{label}</span>
-                </div>
-              ))}
-            </div>
+            <p style={{ margin: '12px 0 0', textAlign: 'center', fontSize: '12.5px', color: '#A9B6C7', lineHeight: 1.5 }}>
+              Sans engagement · Réponse sous 1h · 1ère semaine offerte
+            </p>
 
           </form>
         ) : (
@@ -1122,8 +1133,6 @@ Bonjour, je souhaite recevoir mon devis d'assurance VTC.`;
                         { key: 'vtcVerso', label: 'Carte VTC (Verso)' },
                         { key: 'rcCirculation', label: 'RC Circulation' },
                         { key: 'carteGrise', label: 'Carte Grise' },
-                        { key: 'memoAssurance', label: 'Mémo Assurance' },
-                        { key: 'signature', label: 'Photo Signature' },
                       ].filter(d => !optionalDocs[d.key as keyof typeof optionalDocs]);
                       if (missingDocs.length === 0) return null;
                       return (
@@ -1181,11 +1190,11 @@ Bonjour, je souhaite recevoir mon devis d'assurance VTC.`;
           position: 'sticky',
           top: 0,
           zIndex: 1000,
-          background: 'transparent',
-          backdropFilter: 'none',
-          WebkitBackdropFilter: 'none',
-          borderBottom: 'none',
-          boxShadow: 'none',
+          background: scrolled || mobileMenuOpen ? 'rgba(10, 16, 25, 0.82)' : 'transparent',
+          backdropFilter: scrolled || mobileMenuOpen ? 'blur(14px)' : 'none',
+          WebkitBackdropFilter: scrolled || mobileMenuOpen ? 'blur(14px)' : 'none',
+          borderBottom: scrolled || mobileMenuOpen ? '1px solid rgba(255, 255, 255, 0.07)' : '1px solid transparent',
+          transition: 'background 0.25s ease, border-color 0.25s ease',
         }}
       >
         <div
@@ -1234,16 +1243,27 @@ Bonjour, je souhaite recevoir mon devis d'assurance VTC.`;
           </a>
 
           {/* LIENS NAVIGATION DESKTOP */}
-          {!isMobile && (
-            <nav style={{ display: 'flex', gap: '28px', alignItems: 'center' }}>
-              <a href="#calcul" onClick={(e) => scrollToSection(e, 'calcul')} style={{ fontSize: '12.5px', fontWeight: 600, color: 'rgba(255, 255, 255, 0.85)', textDecoration: 'none', transition: 'color 0.2s' }}>Notre concept</a>
-              <a href="/assurance" onClick={(e) => navigateTo(e, '/assurance')} style={{ fontSize: '12.5px', fontWeight: 700, color: '#38BDF8', textDecoration: 'none', transition: 'color 0.2s' }}>Assurance VTC</a>
-              <a href="#comparatif" onClick={(e) => scrollToSection(e, 'comparatif')} style={{ fontSize: '12.5px', fontWeight: 600, color: 'rgba(255, 255, 255, 0.85)', textDecoration: 'none', transition: 'color 0.2s' }}>Comparatif</a>
-              <a href="#formules" onClick={(e) => scrollToSection(e, 'formules')} style={{ fontSize: '12.5px', fontWeight: 600, color: 'rgba(255, 255, 255, 0.85)', textDecoration: 'none', transition: 'color 0.2s' }}>Formules</a>
-              <a href="/simulateur" onClick={(e) => navigateTo(e, '/simulateur')} style={{ fontSize: '12.5px', fontWeight: 600, color: 'rgba(255, 255, 255, 0.85)', textDecoration: 'none', transition: 'color 0.2s' }}>Simulateur</a>
-              <a href="/parrainage" onClick={(e) => navigateTo(e, '/parrainage')} style={{ fontSize: '12.5px', fontWeight: 800, color: '#F59E0B', textDecoration: 'none' }}>Parrainage 200€</a>
-              <a href="/faq" onClick={(e) => navigateTo(e, '/faq')} style={{ fontSize: '12.5px', fontWeight: 600, color: 'rgba(255, 255, 255, 0.85)', textDecoration: 'none', transition: 'color 0.2s' }}>FAQ</a>
-              <a href="/contact" onClick={(e) => navigateTo(e, '/contact')} style={{ fontSize: '12.5px', fontWeight: 600, color: 'rgba(255, 255, 255, 0.85)', textDecoration: 'none', transition: 'color 0.2s' }}>Contact</a>
+          {!isNarrow && (
+            <nav style={{ display: 'flex', gap: '26px', alignItems: 'center' }}>
+              {navLinks.filter(l => !l.mobileOnly).map(link => (
+                <a
+                  key={link.href}
+                  href={link.href}
+                  onClick={(e) => goTo(e, link)}
+                  style={{
+                    fontSize: '13px',
+                    fontWeight: link.accent ? 800 : 600,
+                    color: navColor(link.accent),
+                    textDecoration: 'none',
+                    whiteSpace: 'nowrap',
+                    borderBottom: currentPath === link.href ? '2px solid #E5C158' : '2px solid transparent',
+                    paddingBottom: '2px',
+                    transition: 'color 0.2s',
+                  }}
+                >
+                  {link.label}
+                </a>
+              ))}
             </nav>
           )}
 
@@ -1300,12 +1320,12 @@ Bonjour, je souhaite recevoir mon devis d'assurance VTC.`;
                   whiteSpace: 'nowrap',
                 }}
               >
-                Nous rejoindre
+                Je rejoins la flotte
               </a>
             )}
 
             {/* LES 3 TRAITS FINS MENU HAMBURGER (≡) PURE DESIGN STYLE NORDVPN SUR MOBILE */}
-            {isMobile && (
+            {isNarrow && (
               <button
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                 style={{
@@ -1321,6 +1341,7 @@ Bonjour, je souhaite recevoir mon devis d'assurance VTC.`;
                   lineHeight: 1,
                 }}
                 aria-label="Menu Navigation"
+                aria-expanded={mobileMenuOpen}
               >
                 {mobileMenuOpen ? <X size={24} strokeWidth={1.5} /> : <Menu size={24} strokeWidth={1.5} />}
               </button>
@@ -1352,15 +1373,16 @@ Bonjour, je souhaite recevoir mon devis d'assurance VTC.`;
             gap: '8px'
           }}
         >
-          <a href="#calcul" onClick={(e) => { scrollToSection(e, 'calcul'); setMobileMenuOpen(false); }} style={{ color: '#FFF', fontSize: '15px', fontWeight: 700, textDecoration: 'none', padding: '10px 0', borderBottom: '1px solid rgba(255, 255, 255, 0.06)' }}>Notre concept</a>
-          <a href="/assurance" onClick={(e) => { navigateTo(e, '/assurance'); setMobileMenuOpen(false); }} style={{ color: '#38BDF8', fontSize: '15px', fontWeight: 700, textDecoration: 'none', padding: '10px 0', borderBottom: '1px solid rgba(255, 255, 255, 0.06)' }}>🛡️ Assurance VTC (Devis 1h)</a>
-          <a href="#comparatif" onClick={(e) => { scrollToSection(e, 'comparatif'); setMobileMenuOpen(false); }} style={{ color: '#FFF', fontSize: '15px', fontWeight: 700, textDecoration: 'none', padding: '10px 0', borderBottom: '1px solid rgba(255, 255, 255, 0.06)' }}>Comparatif</a>
-          <a href="#formules" onClick={(e) => { scrollToSection(e, 'formules'); setMobileMenuOpen(false); }} style={{ color: '#FFF', fontSize: '15px', fontWeight: 700, textDecoration: 'none', padding: '10px 0', borderBottom: '1px solid rgba(255, 255, 255, 0.06)' }}>Formules</a>
-          <a href="/simulateur" onClick={(e) => { navigateTo(e, '/simulateur'); setMobileMenuOpen(false); }} style={{ color: '#FFF', fontSize: '15px', fontWeight: 700, textDecoration: 'none', padding: '10px 0', borderBottom: '1px solid rgba(255, 255, 255, 0.06)' }}>Simulateur</a>
-          <a href="/parrainage" onClick={(e) => { navigateTo(e, '/parrainage'); setMobileMenuOpen(false); }} style={{ color: '#F59E0B', fontSize: '15px', fontWeight: 700, textDecoration: 'none', padding: '10px 0', borderBottom: '1px solid rgba(255, 255, 255, 0.06)' }}>Parrainage 200€</a>
-          <a href="/faq" onClick={(e) => { navigateTo(e, '/faq'); setMobileMenuOpen(false); }} style={{ color: '#FFF', fontSize: '15px', fontWeight: 700, textDecoration: 'none', padding: '10px 0', borderBottom: '1px solid rgba(255, 255, 255, 0.06)' }}>FAQ complète</a>
-          <a href="/qui-sommes-nous" onClick={(e) => { navigateTo(e, '/qui-sommes-nous'); setMobileMenuOpen(false); }} style={{ color: '#FFF', fontSize: '15px', fontWeight: 700, textDecoration: 'none', padding: '10px 0', borderBottom: '1px solid rgba(255, 255, 255, 0.06)' }}>Qui sommes-nous</a>
-          <a href="/contact" onClick={(e) => { navigateTo(e, '/contact'); setMobileMenuOpen(false); }} style={{ color: '#FFF', fontSize: '15px', fontWeight: 700, textDecoration: 'none', padding: '10px 0' }}>Contact</a>
+          {navLinks.map((link, i, arr) => (
+            <a
+              key={link.href}
+              href={link.href}
+              onClick={(e) => goTo(e, link)}
+              style={{ color: navColor(link.accent) === 'rgba(255, 255, 255, 0.88)' ? '#FFF' : navColor(link.accent), fontSize: '15px', fontWeight: 700, textDecoration: 'none', padding: '11px 0', borderBottom: i < arr.length - 1 ? '1px solid rgba(255, 255, 255, 0.06)' : 'none' }}
+            >
+              {link.label}
+            </a>
+          ))}
           
           <a 
             href="#formulaire" 
@@ -1371,565 +1393,31 @@ Bonjour, je souhaite recevoir mon devis d'assurance VTC.`;
               textAlign: 'center',
               fontSize: '14px',
               fontWeight: 800,
-              color: '#FFF',
-              background: 'linear-gradient(135deg, #0284C7 0%, #0D9488 100%)',
+              color: '#1B1305',
+              background: 'linear-gradient(135deg, #FBE5A9 0%, #E5C158 55%, #C99A22 100%)',
               borderRadius: '100px',
               textDecoration: 'none',
-              boxShadow: '0 8px 20px rgba(2, 132, 199, 0.35)'
+              boxShadow: '0 8px 20px rgba(229, 193, 88, 0.3)'
             }}
           >
-            Nous rejoindre — Dossier en 1h
+            Je rejoins la flotte — dossier en 1h
           </a>
         </div>
       )}
 
       <main style={{ position: 'relative', zIndex: 1 }}>
         {currentPath === '/' && (
-          <>
-            {/* HERO SECTION NORDRIVE — ÉPURÉ, LUXE ET PUNCHY */}
-            <section className="dd-hero-section" style={{ paddingBottom: isMobile ? '36px' : '56px', paddingTop: isMobile ? '85px' : '120px' }}>
-              <div className="dd-container" style={{ maxWidth: '1040px', textAlign: 'center' }}>
-                
-                {/* 1. BADGE CAPSULE SUPÉRIEUR */}
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', background: 'rgba(229, 193, 88, 0.1)', border: '1px solid rgba(229, 193, 88, 0.35)', borderRadius: '100px', padding: isMobile ? '5px 14px' : '6px 18px', maxWidth: '92vw', marginBottom: isMobile ? '12px' : '18px' }}>
-                  <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#E5C158', boxShadow: '0 0 10px #E5C158', flexShrink: 0 }}></span>
-                  <span style={{ fontSize: isMobile ? '10px' : '12px', fontWeight: 800, color: '#FFE29F', letterSpacing: isMobile ? '0.5px' : '0.8px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-                    {isMobile ? "FLOTTE AGRÉÉE • UBER, BOLT, HEETCH" : "FLOTTE VTC AGRÉÉE • PARTENAIRE OFFICIEL UBER, BOLT & HEETCH"}
-                  </span>
-                </div>
-
-                {/* 2. TITRE PRINCIPAL MAJESTUEUX */}
-                <h1 style={{
-                  fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif",
-                  fontSize: isMobile ? '22px' : '56px',
-                  fontWeight: 900,
-                  letterSpacing: isMobile ? '0px' : '-1.5px',
-                  lineHeight: 1.25,
-                  color: '#FFF',
-                  margin: isMobile ? '0 auto 10px' : '0 auto 16px',
-                  padding: isMobile ? '0 10px' : 0,
-                  maxWidth: '850px',
-                }}>
-                  Votre Rattachement VTC <br />
-                  <span className="flyer-gold-text">en toute sérénité</span>
-                </h1>
-
-                {/* 3. SOUS-TITRE CLAIR & RASSURANT */}
-                <p style={{
-                  fontSize: isMobile ? '13px' : '16.5px',
-                  color: '#CBD5E1',
-                  maxWidth: '720px',
-                  margin: isMobile ? '0 auto 16px' : '0 auto 22px',
-                  lineHeight: 1.5,
-                  padding: isMobile ? '0 6px' : 0,
-                }}>
-                  Roulez sur toutes les applications avec la flotte la plus transparente.
-                  <strong style={{ color: '#FFF' }}> 50€ par semaine uniquement si vous roulez</strong>, 
-                  virements bancaires garantis chaque lundi et zéro commission sur votre chiffre d'affaires.
-                </p>
-
-                {/* 4. LOGOS DES PLATEFORMES (ÉLÉGANTS & HARMONIEUX) */}
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: isMobile ? '14px' : '28px', background: 'rgba(255, 255, 255, 0.04)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '100px', padding: isMobile ? '5px 16px' : '8px 26px', marginBottom: isMobile ? '20px' : '28px' }}>
-                  <span style={{ fontSize: isMobile ? '16px' : '22px', fontWeight: 900, color: '#FFF', letterSpacing: '-0.5px' }}>Uber</span>
-                  <span style={{ color: 'rgba(255, 255, 255, 0.2)' }}>•</span>
-                  <span style={{ fontSize: isMobile ? '16px' : '22px', fontWeight: 900, color: '#34D399', letterSpacing: '-0.5px' }}>Bolt</span>
-                  <span style={{ color: 'rgba(255, 255, 255, 0.2)' }}>•</span>
-                  <span style={{ fontSize: isMobile ? '16px' : '22px', fontWeight: 900, color: '#FF0055', letterSpacing: '0.5px' }}>HEETCH</span>
-                </div>
-
-                {/* 5. ACTION HUB INSTANTANÉ (AU DESSUS DES CARTES POUR CONVERSION IMMÉDIATE) */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: isMobile ? '10px' : '16px', flexDirection: isMobile ? 'column' : 'row', width: isMobile ? '100%' : 'auto', maxWidth: isMobile ? '380px' : 'none', margin: '0 auto 26px' }}>
-                  {/* BOUTON WHATSAPP DIRECT */}
-                  <a
-                    href="https://wa.me/33743767400?text=Bonjour%20Nordrive%2C%20je%20souhaite%20m%27inscrire%20et%20avoir%20des%20infos%20sur%20le%20rattachement%20flotte%20VTC."
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '8px',
-                      width: isMobile ? '100%' : 'auto',
-                      padding: isMobile ? '12px 18px' : '15px 28px',
-                      borderRadius: '100px',
-                      background: 'linear-gradient(135deg, #25D366 0%, #1EBE5D 100%)',
-                      color: '#FFF',
-                      fontSize: isMobile ? '12.5px' : '15px',
-                      fontWeight: 800,
-                      textDecoration: 'none',
-                      whiteSpace: 'nowrap',
-                      boxShadow: '0 8px 25px rgba(37, 211, 102, 0.45)',
-                      transition: 'all 0.2s ease',
-                    }}
-                  >
-                    <MessageSquare size={17} />
-                    <span>{isMobile ? "WhatsApp Direct (07 43 76 74 00)" : "Inscription Flash WhatsApp (07 43 76 74 00)"}</span>
-                  </a>
-
-                  {/* BOUTON FORMULAIRE EN LIGNE (SCROLL DOUX VERS #formulaire) */}
-                  <a
-                    href="#formulaire"
-                    onClick={(e) => scrollToSection(e, 'formulaire')}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '8px',
-                      width: isMobile ? '100%' : 'auto',
-                      padding: isMobile ? '12px 18px' : '15px 26px',
-                      borderRadius: '100px',
-                      background: 'rgba(255, 255, 255, 0.08)',
-                      border: '1.5px solid rgba(229, 178, 70, 0.5)',
-                      color: '#FFE29F',
-                      fontSize: isMobile ? '12.5px' : '15px',
-                      fontWeight: 800,
-                      textDecoration: 'none',
-                      whiteSpace: 'nowrap',
-                      transition: 'all 0.2s ease',
-                    }}
-                  >
-                    <span>{isMobile ? "📝 Formulaire Express en ligne" : "📝 Formulaire Express (2 min)"}</span>
-                  </a>
-                </div>
-
-                {/* 6. LES 3 PILIERS FORTS DE L'OFFRE (3 CARTES MODERNES ÉPURÉES) */}
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
-                  gap: isMobile ? '12px' : '18px',
-                  maxWidth: '960px',
-                  margin: '0 auto 28px',
-                  textAlign: 'left'
-                }}>
-                  {/* PILIER 1: 50€ FIXE */}
-                  <div className="flyer-card-right-gold" style={{ padding: isMobile ? '18px 16px' : '24px 22px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                        <span style={{ fontSize: '10.5px', fontWeight: 900, color: '#FFE29F', textTransform: 'uppercase', letterSpacing: '1px', background: 'rgba(229, 178, 70, 0.2)', padding: '3px 10px', borderRadius: '100px' }}>
-                          OFFRE UNIQUE
-                        </span>
-                        <span style={{ fontSize: '16px' }}>💎</span>
-                      </div>
-                      <div className="flyer-gold-text" style={{ fontSize: isMobile ? '34px' : '44px', fontWeight: 900, lineHeight: 1, marginBottom: '4px' }}>
-                        50€*
-                      </div>
-                      <div style={{ fontSize: '12.5px', fontWeight: 800, color: '#FFF', marginBottom: '6px' }}>
-                        PAR SEMAINE TRAVAILLÉE
-                      </div>
-                      <p style={{ fontSize: '12px', color: '#CBD5E1', lineHeight: 1.45, margin: 0 }}>
-                        <strong style={{ color: '#34D399' }}>0€ si vous ne roulez pas.</strong> Zéro pourcentage sur votre CA, vous conservez 100% de vos gains nets.
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* PILIER 2: VÉHICULES +12 ANS */}
-                  <div className="flyer-card-left" style={{ padding: isMobile ? '18px 16px' : '24px 22px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                        <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#93C5FD', textTransform: 'uppercase', letterSpacing: '1px', background: 'rgba(56, 189, 248, 0.15)', padding: '3px 10px', borderRadius: '100px' }}>
-                          ACCORD FLOTTE
-                        </span>
-                        <span style={{ fontSize: '16px' }}>🚗</span>
-                      </div>
-                      <div style={{ fontSize: isMobile ? '18px' : '22px', fontWeight: 900, color: '#FFF', lineHeight: 1.2, marginBottom: '6px' }}>
-                        Véhicules +12 ans acceptés
-                      </div>
-                      <p style={{ fontSize: '12px', color: '#94A3B8', lineHeight: 1.45, margin: 0 }}>
-                        Notre statut officiel de gestionnaire de flotte agréé permet d'activer légalement vos véhicules de plus de 12 ans sur les plateformes.
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* PILIER 3: MACARON < 1 HEURE */}
-                  <div className="flyer-card-left" style={{ padding: isMobile ? '18px 16px' : '24px 22px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                        <span style={{ fontSize: '10.5px', fontWeight: 800, color: '#A7F3D0', textTransform: 'uppercase', letterSpacing: '1px', background: 'rgba(16, 185, 129, 0.15)', padding: '3px 10px', borderRadius: '100px' }}>
-                          EXPRESS
-                        </span>
-                        <span style={{ fontSize: '16px' }}>⚡</span>
-                      </div>
-                      <div style={{ fontSize: isMobile ? '18px' : '22px', fontWeight: 900, color: '#FFF', lineHeight: 1.2, marginBottom: '6px' }}>
-                        Macaron VTC en moins d'1h
-                      </div>
-                      <p style={{ fontSize: '12px', color: '#94A3B8', lineHeight: 1.45, margin: 0 }}>
-                        Attestation officielle immédiate. Contrats CDI ou CDD au choix, fiches de paie mensuelles et conformité juridique totale.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 7. CAPSULE PARRAINAGE 200€ */}
-                <div>
-                  <a
-                    href="/parrainage"
-                    onClick={(e) => navigateTo(e, '/parrainage')}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      color: '#FFE29F',
-                      textDecoration: 'none',
-                      fontSize: '12px',
-                      fontWeight: 700,
-                      background: 'rgba(229, 178, 70, 0.1)',
-                      border: '1px solid rgba(229, 178, 70, 0.25)',
-                      padding: '5px 14px',
-                      borderRadius: '100px',
-                      maxWidth: '92vw'
-                    }}
-                  >
-                    <Gift size={13} color="#E5C158" />
-                    <span>🎁 Programme Parrainage : Jusqu'à 200 € offerts par chauffeur parrainé →</span>
-                  </a>
-                </div>
-
-              </div>
-            </section>
-
-            {/* SECTION 2 : EXPLICATION CLAIRE — COMBIEN VOUS EMPOCHEZ (SEMAINE & MOIS) */}
-            <section id="calcul-gains" className="dd-container" style={{ padding: isMobile ? '36px 14px 40px' : '50px 20px 50px', borderTop: '1px solid rgba(255, 255, 255, 0.05)' }}>
-
-              {/* Header section explication */}
-              <div className="reveal-on-scroll" style={{ textAlign: 'center', maxWidth: '850px', margin: '0 auto 20px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 800, color: '#34D399', textTransform: 'uppercase', letterSpacing: '1.2px', background: 'rgba(16, 185, 129, 0.1)', padding: '5px 12px', borderRadius: '100px', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
-                  💶 Vos gains réels expliqués
-                </span>
-                <h2 style={{ fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif", fontSize: isMobile ? '23px' : '34px', fontWeight: 900, color: '#FFF', margin: '12px 0 8px', lineHeight: 1.25 }}>
-                  Combien vous empochez réellement ?
-                </h2>
-                <p style={{ fontSize: isMobile ? '13px' : '15px', color: '#CBD5E1', lineHeight: isMobile ? '1.5' : '1.7', maxWidth: '700px', margin: '0 auto 16px' }}>
-                  Chez Nordrive, nous prélevons uniquement <strong style={{ color: '#FFE29F' }}>50€ par semaine</strong> travaillée. <strong style={{ color: '#34D399' }}>Tout le reste de votre CA va directement dans votre poche.</strong>
-                </p>
-
-                {/* Toggle Sélecteur Semaine / Mois */}
-                <div style={{ display: 'inline-flex', width: isMobile ? '100%' : 'auto', maxWidth: isMobile ? '360px' : 'none', background: 'rgba(255, 255, 255, 0.06)', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '100px', padding: '4px', gap: '4px', marginBottom: '6px' }}>
-                  <button
-                    type="button"
-                    onClick={() => setExamplePeriod('semaine')}
-                    style={{
-                      flex: isMobile ? 1 : 'none',
-                      padding: isMobile ? '8px 12px' : '9px 20px',
-                      borderRadius: '100px',
-                      border: 'none',
-                      background: examplePeriod === 'semaine' ? 'linear-gradient(135deg, #FFE29F 0%, #FFAE34 60%, #C88300 100%)' : 'transparent',
-                      color: examplePeriod === 'semaine' ? '#1A1000' : '#CBD5E1',
-                      fontSize: isMobile ? '12px' : '13px',
-                      fontWeight: 900,
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease',
-                      boxShadow: examplePeriod === 'semaine' ? '0 4px 15px rgba(229, 178, 70, 0.4)' : 'none',
-                    }}
-                  >
-                    ⚡ Vue Semaine
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setExamplePeriod('mois')}
-                    style={{
-                      flex: isMobile ? 1 : 'none',
-                      padding: isMobile ? '8px 12px' : '9px 20px',
-                      borderRadius: '100px',
-                      border: 'none',
-                      background: examplePeriod === 'mois' ? 'linear-gradient(135deg, #FFE29F 0%, #FFAE34 60%, #C88300 100%)' : 'transparent',
-                      color: examplePeriod === 'mois' ? '#1A1000' : '#CBD5E1',
-                      fontSize: isMobile ? '12px' : '13px',
-                      fontWeight: 900,
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease',
-                      boxShadow: examplePeriod === 'mois' ? '0 4px 15px rgba(229, 178, 70, 0.4)' : 'none',
-                    }}
-                  >
-                    📅 Vue Mois
-                  </button>
-                </div>
-              </div>
-
-              {/* ====== 3 EXEMPLES VISUELS EN CARDS ====== */}
-              <div className="reveal-zoom" style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: isMobile ? '14px' : '18px', maxWidth: '980px', margin: '0 auto 16px' }}>
-
-                {/* Exemple 1 — 1 200€ / sem */}
-                <div style={{
-                  background: 'linear-gradient(160deg, rgba(16, 185, 129, 0.12) 0%, rgba(11, 17, 25, 0.95) 100%)',
-                  border: '1.5px solid rgba(16, 185, 129, 0.5)',
-                  borderRadius: isMobile ? '18px' : '22px',
-                  padding: isMobile ? '20px 14px' : '24px 20px',
-                  textAlign: 'center',
-                  position: 'relative',
-                  overflow: 'hidden',
-                  boxShadow: '0 0 30px rgba(16, 185, 129, 0.15)',
-                }}>
-                  <div style={{ position: 'absolute', top: '10px', right: '10px', background: 'rgba(16, 185, 129, 0.25)', border: '1px solid rgba(16, 185, 129, 0.5)', color: '#34D399', fontSize: '9px', fontWeight: 900, padding: '3px 8px', borderRadius: '100px', textTransform: 'uppercase' }}>
-                    🌟 Le + courant
-                  </div>
-                  <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 10px' }}>
-                    <Banknote size={20} color="#34D399" />
-                  </div>
-                  
-                  <p style={{ fontSize: '11px', fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '2px' }}>
-                    {examplePeriod === 'semaine' ? "Chiffre d'affaires semaine" : "Chiffre d'affaires mensuel"}
-                  </p>
-                  <div style={{ fontSize: isMobile ? '26px' : '32px', fontWeight: 900, color: '#FFF', lineHeight: 1.1 }}>
-                    {examplePeriod === 'semaine' ? '1 200 €' : '4 800 €'}
-                  </div>
-
-                  <div style={{ margin: '8px auto', width: '85%', height: '1px', background: 'rgba(255,255,255,0.1)' }} />
-
-                  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
-                    <span style={{ fontSize: '12.5px', color: '#F87171', fontWeight: 800 }}>
-                      {examplePeriod === 'semaine' ? '− 50 €' : '− 200 €'}
-                    </span>
-                    <span style={{ fontSize: '10.5px', color: '#94A3B8' }}>
-                      {examplePeriod === 'semaine' ? '(frais Nordrive)' : '(4 sem × 50€)'}
-                    </span>
-                  </div>
-
-                  <div style={{ margin: '6px auto', width: '60%', height: '2px', background: 'linear-gradient(90deg, transparent, rgba(16, 185, 129, 0.6), transparent)' }} />
-
-                  <p style={{ fontSize: '10.5px', fontWeight: 800, color: '#34D399', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '2px' }}>
-                    💰 DANS VOTRE POCHE (NET)
-                  </p>
-                  <div style={{ fontSize: isMobile ? '32px' : '38px', fontWeight: 900, color: '#34D399', lineHeight: 1 }}>
-                    {examplePeriod === 'semaine' ? '1 150 €' : '4 600 €'}
-                  </div>
-                  <p style={{ fontSize: '10.5px', color: '#6B7280', marginTop: '6px' }}>✓ Virement chaque lundi</p>
-                </div>
-
-                {/* Exemple 2 — 1 000€ / sem */}
-                <div style={{
-                  background: 'linear-gradient(160deg, rgba(56, 189, 248, 0.08) 0%, rgba(11, 17, 25, 0.95) 100%)',
-                  border: '1.5px solid rgba(56, 189, 248, 0.35)',
-                  borderRadius: isMobile ? '18px' : '22px',
-                  padding: isMobile ? '20px 14px' : '24px 20px',
-                  textAlign: 'center',
-                }}>
-                  <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'rgba(56, 189, 248, 0.12)', border: '1px solid rgba(56, 189, 248, 0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 10px' }}>
-                    <Wallet size={20} color="#38BDF8" />
-                  </div>
-                  
-                  <p style={{ fontSize: '11px', fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '2px' }}>
-                    {examplePeriod === 'semaine' ? "Chiffre d'affaires semaine" : "Chiffre d'affaires mensuel"}
-                  </p>
-                  <div style={{ fontSize: isMobile ? '26px' : '32px', fontWeight: 900, color: '#FFF', lineHeight: 1.1 }}>
-                    {examplePeriod === 'semaine' ? '1 000 €' : '4 000 €'}
-                  </div>
-
-                  <div style={{ margin: '8px auto', width: '85%', height: '1px', background: 'rgba(255,255,255,0.1)' }} />
-
-                  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
-                    <span style={{ fontSize: '12.5px', color: '#F87171', fontWeight: 800 }}>
-                      {examplePeriod === 'semaine' ? '− 50 €' : '− 200 €'}
-                    </span>
-                    <span style={{ fontSize: '10.5px', color: '#94A3B8' }}>
-                      {examplePeriod === 'semaine' ? '(frais Nordrive)' : '(4 sem × 50€)'}
-                    </span>
-                  </div>
-
-                  <div style={{ margin: '6px auto', width: '60%', height: '2px', background: 'linear-gradient(90deg, transparent, rgba(56, 189, 248, 0.5), transparent)' }} />
-
-                  <p style={{ fontSize: '10.5px', fontWeight: 800, color: '#38BDF8', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '2px' }}>
-                    💰 DANS VOTRE POCHE (NET)
-                  </p>
-                  <div style={{ fontSize: isMobile ? '32px' : '38px', fontWeight: 900, color: '#38BDF8', lineHeight: 1 }}>
-                    {examplePeriod === 'semaine' ? '950 €' : '3 800 €'}
-                  </div>
-                  <p style={{ fontSize: '10.5px', color: '#6B7280', marginTop: '6px' }}>✓ Virement chaque lundi</p>
-                </div>
-
-                {/* Exemple 3 — 500€ / sem */}
-                <div style={{
-                  background: 'linear-gradient(160deg, rgba(229, 178, 70, 0.08) 0%, rgba(11, 17, 25, 0.95) 100%)',
-                  border: '1.5px solid rgba(229, 178, 70, 0.35)',
-                  borderRadius: isMobile ? '18px' : '22px',
-                  padding: isMobile ? '20px 14px' : '24px 20px',
-                  textAlign: 'center',
-                }}>
-                  <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'rgba(229, 178, 70, 0.12)', border: '1px solid rgba(229, 178, 70, 0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 10px' }}>
-                    <Wallet size={20} color="#E5C158" />
-                  </div>
-                  
-                  <p style={{ fontSize: '11px', fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '2px' }}>
-                    {examplePeriod === 'semaine' ? "Chiffre d'affaires semaine" : "Chiffre d'affaires mensuel"}
-                  </p>
-                  <div style={{ fontSize: isMobile ? '26px' : '32px', fontWeight: 900, color: '#FFF', lineHeight: 1.1 }}>
-                    {examplePeriod === 'semaine' ? '500 €' : '2 000 €'}
-                  </div>
-
-                  <div style={{ margin: '8px auto', width: '85%', height: '1px', background: 'rgba(255,255,255,0.1)' }} />
-
-                  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
-                    <span style={{ fontSize: '12.5px', color: '#F87171', fontWeight: 800 }}>
-                      {examplePeriod === 'semaine' ? '− 50 €' : '− 200 €'}
-                    </span>
-                    <span style={{ fontSize: '10.5px', color: '#94A3B8' }}>
-                      {examplePeriod === 'semaine' ? '(frais Nordrive)' : '(4 sem × 50€)'}
-                    </span>
-                  </div>
-
-                  <div style={{ margin: '6px auto', width: '60%', height: '2px', background: 'linear-gradient(90deg, transparent, rgba(229, 178, 70, 0.5), transparent)' }} />
-
-                  <p style={{ fontSize: '10.5px', fontWeight: 800, color: '#FFE29F', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '2px' }}>
-                    💰 DANS VOTRE POCHE (NET)
-                  </p>
-                  <div style={{ fontSize: isMobile ? '32px' : '38px', fontWeight: 900, color: '#FFE29F', lineHeight: 1 }}>
-                    {examplePeriod === 'semaine' ? '450 €' : '1 800 €'}
-                  </div>
-                  <p style={{ fontSize: '10.5px', color: '#6B7280', marginTop: '6px' }}>✓ Virement chaque lundi</p>
-                </div>
-
-              </div>
-
-              {/* BONUS : Semaine 0€ */}
-              <div className="reveal-on-scroll" style={{ maxWidth: '980px', margin: '0 auto 16px' }}>
-                <div style={{
-                  background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(229, 178, 70, 0.08) 100%)',
-                  border: '1.5px dashed rgba(16, 185, 129, 0.4)',
-                  borderRadius: isMobile ? '14px' : '16px',
-                  padding: isMobile ? '14px 12px' : '18px 24px',
-                  display: 'flex',
-                  flexDirection: isMobile ? 'column' : 'row',
-                  alignItems: 'center',
-                  gap: isMobile ? '10px' : '16px',
-                  textAlign: isMobile ? 'center' : 'left',
-                }}>
-                  <div style={{ fontSize: isMobile ? '28px' : '32px', lineHeight: 1 }}>🏖️</div>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ fontSize: isMobile ? '13.5px' : '14.5px', fontWeight: 800, color: '#FFF', marginBottom: '2px' }}>
-                      Et si vous ne travaillez pas une semaine ?
-                    </p>
-                    <p style={{ fontSize: isMobile ? '12px' : '13px', color: '#9CA3AF', lineHeight: 1.4, margin: 0 }}>
-                      C'est simple : <strong style={{ color: '#34D399' }}>0€ de CA = 0€ de frais</strong>. Vous partez en vacances ou faites une pause ? Vous ne payez rien.
-                    </p>
-                  </div>
-                  <div style={{ background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.35)', color: '#34D399', fontSize: isMobile ? '16px' : '18px', fontWeight: 900, padding: isMobile ? '6px 14px' : '8px 18px', borderRadius: '12px', whiteSpace: 'nowrap' }}>
-                    0€ = 0€
-                  </div>
-                </div>
-              </div>
-
-              {/* BOUTON SIMULATEUR COMPLET */}
-              <div style={{ textAlign: 'center', marginTop: '12px' }}>
-                <a
-                  href="/simulateur"
-                  onClick={(e) => navigateTo(e, '/simulateur')}
-                  className="dd-btn dd-btn-primary"
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    padding: '12px 24px',
-                    borderRadius: '100px',
-                    fontSize: '13.5px',
-                    fontWeight: 800,
-                    textDecoration: 'none'
-                  }}
-                >
-                  <span>🧮 Tester le Simulateur Interactif Complet →</span>
-                </a>
-              </div>
-            </section>
-
-            {/* SECTION 3 : FORMULAIRE DE RATTACHEMENT EXPRESS */}
-            <section id="formulaire" className="dd-container" style={{ padding: isMobile ? '36px 14px 40px' : '50px 20px 60px', borderTop: '1px solid rgba(255, 255, 255, 0.05)' }}>
-              <div className="reveal-on-scroll" style={{ textAlign: 'center', maxWidth: '680px', margin: '0 auto 24px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 800, color: '#FFE29F', textTransform: 'uppercase', letterSpacing: '1.2px', background: 'rgba(229, 178, 70, 0.12)', border: '1px solid rgba(229, 178, 70, 0.35)', padding: '5px 14px', borderRadius: '100px' }}>
-                  🚀 Inscription Express en 2 Minutes
-                </span>
-                <h2 style={{ fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif", fontSize: isMobile ? '23px' : '32px', fontWeight: 900, color: '#FFF', margin: '12px 0 6px' }}>
-                  Rejoignez la Flotte Nordrive
-                </h2>
-                <p style={{ fontSize: isMobile ? '13px' : '14.5px', color: '#94A3B8', margin: 0 }}>
-                  Renseignez vos coordonnées ci-dessous pour recevoir votre contrat et votre attestation de macaron.
-                </p>
-              </div>
-
-              <div style={{ maxWidth: '680px', margin: '0 auto' }}>
-                {renderRegistrationForm()}
-              </div>
-            </section>
-
-            {/* SECTION 4 : QUESTIONS FRÉQUENTES (MINI-FAQ) */}
-            <section id="faq" className="dd-container" style={{ maxWidth: '800px', padding: isMobile ? '36px 14px 40px' : '50px 20px 60px', borderTop: '1px solid rgba(255, 255, 255, 0.05)' }}>
-              <div className="reveal-on-scroll" style={{ textAlign: 'center', marginBottom: '24px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 800, color: '#FFE29F', textTransform: 'uppercase', letterSpacing: '1px' }}>❄️ Réponses Directes</span>
-                <h2 style={{ fontSize: isMobile ? '23px' : '30px', fontWeight: 900, color: '#FFF', margin: '4px 0' }}>Questions fréquentes</h2>
-              </div>
-
-              {faqList.slice(0, 4).map((item, idx) => (
-                <div key={idx} className="nord-accordion-item">
-                  <button onClick={() => setOpenFaq(openFaq === idx ? null : idx)} className="nord-accordion-btn" style={{ padding: '14px 18px', fontSize: isMobile ? '13px' : '14.5px' }}>
-                    <span>{item.q}</span>
-                    <span className={`nord-accordion-plus ${openFaq === idx ? 'open' : ''}`}>+</span>
-                  </button>
-                  {openFaq === idx && (
-                    <div style={{ padding: '0 18px 16px', color: '#CBD5E1', fontSize: '13px', lineHeight: '1.5', borderTop: '1px solid rgba(255, 255, 255, 0.05)', paddingTop: '12px' }}>
-                      {item.a}
-                    </div>
-                  )}
-                </div>
-              ))}
-
-              <div style={{ textAlign: 'center', marginTop: '20px' }}>
-                <a
-                  href="/faq"
-                  onClick={(e) => navigateTo(e, '/faq')}
-                  style={{
-                    color: '#FFE29F',
-                    textDecoration: 'none',
-                    fontWeight: 700,
-                    fontSize: '13.5px',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px'
-                  }}
-                >
-                  <span>Voir toutes les questions & réponses (FAQ complète) →</span>
-                </a>
-              </div>
-            </section>
-
-            {/* SECTION 5 : BANNIÈRE D'ASSISTANCE WHATSAPP DIRECT */}
-            <section className="dd-container" style={{ padding: isMobile ? '20px 14px 50px' : '30px 20px 70px', textAlign: 'center' }}>
-              <div className="flyer-card-right-gold" style={{ maxWidth: '840px', margin: '0 auto', padding: isMobile ? '24px 16px' : '36px 32px', borderRadius: '22px' }}>
-                <h3 style={{ fontSize: isMobile ? '22px' : '30px', fontWeight: 900, color: '#FFF', marginBottom: '8px' }}>
-                  Une question ou besoin d'un macaron urgent ?
-                </h3>
-                <p style={{ fontSize: isMobile ? '13px' : '14.5px', color: '#CBD5E1', maxWidth: '580px', margin: '0 auto 20px', lineHeight: 1.5 }}>
-                  Notre équipe de gestionnaires est disponible 7j/7 pour valider votre dossier et répondre à vos questions par message.
-                </p>
-                <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
-                  <a
-                    href="https://wa.me/33743767400?text=Bonjour%20Nordrive%2C%20j%27ai%20une%20question%20sur%20le%20rattachement."
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      padding: '13px 26px',
-                      borderRadius: '100px',
-                      fontSize: '14px',
-                      fontWeight: 800,
-                      color: '#FFF',
-                      background: '#25D366',
-                      border: 'none',
-                      textDecoration: 'none',
-                      boxShadow: '0 8px 25px rgba(37, 211, 102, 0.4)',
-                    }}
-                  >
-                    <MessageSquare size={17} />
-                    <span>WhatsApp Direct (07 43 76 74 00)</span>
-                  </a>
-                </div>
-              </div>
-            </section>
-          </>
+          <HomePage
+            form={renderRegistrationForm()}
+            faq={faqList}
+            onNavigate={navigateTo}
+            onScrollTo={scrollToSection}
+          />
         )}
 
         {/* SECTION: CHAOS VS SÉRÉNITÉ (DÉDIÉ SUR /comparatif) */}
         {currentPath === '/comparatif' && (
-        <section id="comparatif" className="dd-container" style={{ padding: isMobile ? '160px 20px 80px' : '120px 20px 80px' }}>
+        <section id="comparatif" className="dd-container" style={{ padding: isMobile ? '28px 20px 70px' : '48px 20px 80px' }}>
           <div style={{ marginBottom: '30px', textAlign: 'left', maxWidth: '1000px', margin: '0 auto 24px' }}>
             <a href="/" onClick={(e) => navigateTo(e, '/')} style={{ color: '#38BDF8', textDecoration: 'none', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
               ← Retour à l'accueil
@@ -2034,7 +1522,7 @@ Bonjour, je souhaite recevoir mon devis d'assurance VTC.`;
 
         {/* SECTION: ASSURANCE VTC (DEVIS DÉDIÉ SUR /assurance) */}
         {currentPath === '/assurance' && (
-        <section id="assurance" className="dd-container" style={{ padding: isMobile ? '160px 20px 80px' : '120px 20px 80px' }}>
+        <section id="assurance" className="dd-container" style={{ padding: isMobile ? '28px 20px 70px' : '48px 20px 80px' }}>
           <div style={{ marginBottom: '30px', textAlign: 'left', maxWidth: '1000px', margin: '0 auto 24px' }}>
             <a href="/" onClick={(e) => navigateTo(e, '/')} style={{ color: '#38BDF8', textDecoration: 'none', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
               ← Retour à l'accueil
@@ -2312,7 +1800,7 @@ Bonjour, je souhaite recevoir mon devis d'assurance VTC.`;
 
         {/* SECTION: SIMULATEUR DÉDIÉ SUR /simulateur */}
         {currentPath === '/simulateur' && (
-          <section id="simulateur" className="dd-container" style={{ padding: isMobile ? '110px 14px 60px' : '120px 20px 80px' }}>
+          <section id="simulateur" className="dd-container" style={{ padding: isMobile ? '28px 14px 60px' : '48px 20px 80px' }}>
             <div style={{ marginBottom: '24px', textAlign: 'left', maxWidth: '1000px', margin: '0 auto 20px' }}>
               <a href="/" onClick={(e) => navigateTo(e, '/')} style={{ color: '#38BDF8', textDecoration: 'none', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: isMobile ? '13px' : '14px' }}>
                 ← Retour à l'accueil
@@ -2498,143 +1986,171 @@ Bonjour, je souhaite recevoir mon devis d'assurance VTC.`;
         )}
 
         {currentPath === '/parrainage' && (
-          <section id="parrainage" className="dd-container" style={{ padding: isMobile ? '180px 20px 60px' : '120px 20px 60px' }}>
-            <div style={{ marginBottom: '30px', textAlign: 'left' }}>
-              <a href="/" onClick={(e) => navigateTo(e, '/')} style={{ color: '#38BDF8', textDecoration: 'none', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          <section id="parrainage" className="dd-container" style={{ padding: isMobile ? '28px 16px 70px' : '40px 20px 80px', maxWidth: '940px' }}>
+            <div style={{ marginBottom: '22px', textAlign: 'left' }}>
+              <a href="/" onClick={(e) => navigateTo(e, '/')} style={{ color: '#38BDF8', textDecoration: 'none', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}>
                 ← Retour à l'accueil
               </a>
             </div>
-            <div className={`reveal-zoom ${isSubpage ? 'is-revealed' : ''}`} style={{ background: 'linear-gradient(135deg, rgba(56, 189, 248, 0.12) 0%, rgba(16, 185, 129, 0.15) 100%)', border: '1px solid rgba(56, 189, 248, 0.35)', borderRadius: '24px', padding: isMobile ? '20px 16px' : '36px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: isMobile ? '20px' : '32px', alignItems: 'center' }}>
-            <div style={{ textAlign: 'left' }}>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#F59E0B', color: '#000', fontSize: '11px', fontWeight: 900, padding: '4px 12px', borderRadius: '9999px', textTransform: 'uppercase', marginBottom: '12px' }}>
-                <Gift size={14} /> 🎁 Programme Ambassadeur Nordrive
+
+            {/* EN-TÊTE : promesse claire en une phrase */}
+            <div style={{ textAlign: 'center', maxWidth: '640px', margin: '0 auto 30px' }}>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(229, 193, 88, 0.12)', border: '1px solid rgba(229, 193, 88, 0.4)', color: '#FFE29F', fontSize: '11px', fontWeight: 800, padding: '5px 14px', borderRadius: '9999px', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '14px' }}>
+                <Gift size={14} /> Programme parrainage
               </div>
-              <h2 style={{ fontSize: '28px', fontWeight: 900, color: '#FFF', marginBottom: '8px' }}>
-                Parrainez un confrère VTC et touchez <span style={{ color: '#F59E0B' }}>jusqu'à 200€</span>
-              </h2>
-              <p style={{ fontSize: '14px', color: '#D1D5DB', lineHeight: '1.6', marginBottom: '16px' }}>
-                Recommandez Nordrive à vos confrères et collègues chauffeurs. Pour chaque chauffeur qui rejoint la flotte et effectue sa 1ère semaine de course, vous recevez une prime allant **jusqu'à 200€** versée directement sur votre compte.
+              <h1 style={{ fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif", fontSize: isMobile ? '28px' : '40px', fontWeight: 900, color: '#FFF', lineHeight: 1.15, letterSpacing: '-0.5px', margin: '0 0 12px' }}>
+                Parrainez un confrère,<br />
+                <span className="flyer-gold-text">touchez jusqu'à 200 €</span>
+              </h1>
+              <p style={{ fontSize: isMobile ? '14px' : '16px', color: '#CBD5E1', lineHeight: 1.6, margin: 0 }}>
+                Chaque chauffeur que vous recommandez et qui rejoint la flotte vous rapporte une prime, versée dès que sa première semaine de courses est validée.
               </p>
-              <div style={{ background: 'rgba(2, 10, 26, 0.6)', border: '1px solid rgba(56, 189, 248, 0.15)', borderRadius: '12px', padding: '14px', fontSize: '12.5px', color: '#9CA3AF', lineHeight: '1.5' }}>
-                💡 <strong>Comment ça marche ?</strong><br />
-                Remplissez le formulaire de parrainage ci-contre. Vos informations et celles de votre ami seront enregistrées. Dès que son rattachement est validé, vous touchez jusqu'à 200 euros !
-              </div>
             </div>
 
-            <div>
+            {/* 3 ÉTAPES */}
+            <ol style={{ listStyle: 'none', padding: 0, margin: '0 0 32px', display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: '14px' }}>
+              {[
+                { n: '1', title: 'Vous parrainez', text: "Envoyez l'invitation sur WhatsApp ou indiquez-nous son numéro." },
+                { n: '2', title: 'Il rejoint la flotte', text: 'Nous le rattachons en 1h : macaron, contrat, comptes plateformes.' },
+                { n: '3', title: 'Vous touchez la prime', text: "Jusqu'à 200 € dès sa 1ère semaine de courses validée." },
+              ].map(step => (
+                <li key={step.n} style={{ display: 'flex', gap: '14px', alignItems: 'flex-start', background: 'rgba(255, 255, 255, 0.04)', border: '1px solid rgba(255, 255, 255, 0.09)', borderRadius: '16px', padding: '16px' }}>
+                  <span style={{ flexShrink: 0, width: '32px', height: '32px', borderRadius: '50%', background: 'linear-gradient(135deg, #FBE5A9 0%, #E5C158 50%, #B88514 100%)', color: '#1A1205', fontWeight: 900, fontSize: '15px', display: 'grid', placeItems: 'center' }}>{step.n}</span>
+                  <div style={{ textAlign: 'left' }}>
+                    <div style={{ fontSize: '15px', fontWeight: 800, color: '#FFF', marginBottom: '3px' }}>{step.title}</div>
+                    <div style={{ fontSize: '13px', color: '#94A3B8', lineHeight: 1.5 }}>{step.text}</div>
+                  </div>
+                </li>
+              ))}
+            </ol>
+
+            {/* ACTION : partage rapide + formulaire à 4 champs */}
+            <div style={{ maxWidth: '560px', margin: '0 auto' }}>
               {!referralSubmitted ? (
-                <form onSubmit={handleReferralSubmit} style={{ display: 'grid', gap: '14px', background: 'linear-gradient(180deg, rgba(18, 28, 40, 0.95) 0%, rgba(11, 17, 25, 0.98) 100%)', border: '1px solid rgba(229, 193, 88, 0.3)', borderRadius: '20px', padding: isMobile ? '20px 16px' : '26px', width: '100%', boxShadow: '0 16px 45px rgba(0,0,0,0.7)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(229, 193, 88, 0.2)', paddingBottom: '10px' }}>
-                    <span style={{ fontSize: '13px', fontWeight: 800, color: '#E5C158', letterSpacing: '0.5px' }}>👤 VOUS (LE PARRAIN)</span>
-                    <span style={{ fontSize: '11px', color: '#94A3B8' }}>Pour recevoir vos 200€</span>
-                  </div>
-                  
-                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
-                    <div className="dd-form-group" style={{ marginBottom: 0 }}>
-                      <label className="dd-form-label" style={{ fontSize: '11px' }}>Votre Nom complet *</label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="Ex: Jean Dupont"
-                        value={referralForm.referrerName}
-                        onChange={(e) => setReferralForm({ ...referralForm, referrerName: e.target.value })}
-                        className="dd-input"
-                        style={{ padding: '11px', background: 'rgba(11, 17, 25, 0.8)' }}
-                      />
-                    </div>
-                    <div className="dd-form-group" style={{ marginBottom: 0 }}>
-                      <label className="dd-form-label" style={{ fontSize: '11px' }}>Votre Téléphone *</label>
-                      <input
-                        type="tel"
-                        required
-                        placeholder="Ex: 06 12 34 56 78"
-                        value={referralForm.referrerPhone}
-                        onChange={(e) => setReferralForm({ ...referralForm, referrerPhone: e.target.value })}
-                        className="dd-input"
-                        style={{ padding: '11px', background: 'rgba(11, 17, 25, 0.8)' }}
-                      />
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(56, 189, 248, 0.2)', paddingBottom: '10px', marginTop: '6px' }}>
-                    <span style={{ fontSize: '13px', fontWeight: 800, color: '#38BDF8', letterSpacing: '0.5px' }}>🤝 VOTRE AMI (LE FILLEUL)</span>
-                    <span style={{ fontSize: '11px', color: '#94A3B8' }}>Chauffeur à rattacher</span>
-                  </div>
-                  
-                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
-                    <div className="dd-form-group" style={{ marginBottom: 0 }}>
-                      <label className="dd-form-label" style={{ fontSize: '11px' }}>Nom complet de votre ami *</label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="Ex: Marie Martin"
-                        value={referralForm.friendFirstName}
-                        onChange={(e) => setReferralForm({ ...referralForm, friendFirstName: e.target.value })}
-                        className="dd-input"
-                        style={{ padding: '11px', background: 'rgba(11, 17, 25, 0.8)' }}
-                      />
-                    </div>
-                    <div className="dd-form-group" style={{ marginBottom: 0 }}>
-                      <label className="dd-form-label" style={{ fontSize: '11px' }}>Son Téléphone WhatsApp *</label>
-                      <input
-                        type="tel"
-                        required
-                        placeholder="Ex: 07 12 34 56 78"
-                        value={referralForm.friendPhone}
-                        onChange={(e) => setReferralForm({ ...referralForm, friendPhone: e.target.value })}
-                        className="dd-input"
-                        style={{ padding: '11px', background: 'rgba(11, 17, 25, 0.8)' }}
-                      />
-                    </div>
-                  </div>
-
-                  <button type="submit" className="dd-btn dd-btn-gold" style={{ width: '100%', marginTop: '8px', padding: '14px', borderRadius: '12px', fontSize: '14px', fontWeight: 800 }}>
-                    <span>🎁 Enregistrer le Parrainage (Prime 200€) →</span>
-                  </button>
-
+                <div style={{ background: 'linear-gradient(180deg, rgba(18, 28, 40, 0.95) 0%, rgba(11, 17, 25, 0.98) 100%)', border: '1px solid rgba(229, 193, 88, 0.3)', borderRadius: '20px', padding: isMobile ? '20px 16px' : '28px', boxShadow: '0 16px 45px rgba(0,0,0,0.6)' }}>
                   <a
-                    href={`https://wa.me/?text=${encodeURIComponent("Salut frérot ! Je te recommande Nordrive pour ton rattachement VTC : 50€/semaine si tu roules, 0€ si tu es en vacances, véhicules +12 ans acceptés et macaron en moins d'1 heure ! Inscris-toi ici : https://nordrive-flotte.com/")}`}
+                    href={`https://wa.me/?text=${encodeURIComponent("Salut ! Je te recommande Nordrive pour ton rattachement VTC : 50€/semaine uniquement si tu roules (0€ en vacances), véhicules +12 ans acceptés et macaron en moins d'1h. Inscris-toi ici : https://nordrive-flotte.com/")}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '8px',
-                      padding: '12px',
-                      borderRadius: '12px',
-                      background: 'rgba(37, 211, 102, 0.12)',
-                      border: '1px solid rgba(37, 211, 102, 0.35)',
-                      color: '#25D366',
-                      fontWeight: 700,
-                      fontSize: '13px',
-                      textDecoration: 'none',
-                      textAlign: 'center',
-                    }}
+                    className="dd-btn dd-btn-whatsapp"
+                    style={{ width: '100%', borderRadius: '14px', padding: '15px', fontSize: '15px', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', textDecoration: 'none' }}
                   >
-                    <span>📲 Ou partager directement l'invitation sur WhatsApp</span>
+                    <MessageSquare size={18} />
+                    <span>Envoyer l'invitation sur WhatsApp</span>
                   </a>
-                </form>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', margin: '20px 0 16px', color: '#64748B', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px' }}>
+                    <span style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.1)' }} />
+                    <span>puis enregistrez votre prime</span>
+                    <span style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.1)' }} />
+                  </div>
+
+                  <form onSubmit={handleReferralSubmit} style={{ display: 'grid', gap: '14px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
+                      <div className="dd-form-group" style={{ marginBottom: 0 }}>
+                        <label className="dd-form-label" htmlFor="ref-referrer-name">Votre nom *</label>
+                        <input
+                          id="ref-referrer-name"
+                          type="text"
+                          required
+                          autoComplete="name"
+                          placeholder="Jean Dupont"
+                          value={referralForm.referrerName}
+                          onChange={(e) => setReferralForm({ ...referralForm, referrerName: e.target.value })}
+                          className="dd-input"
+                        />
+                      </div>
+                      <div className="dd-form-group" style={{ marginBottom: 0 }}>
+                        <label className="dd-form-label" htmlFor="ref-referrer-phone">Votre téléphone *</label>
+                        <input
+                          id="ref-referrer-phone"
+                          type="tel"
+                          inputMode="tel"
+                          required
+                          autoComplete="tel"
+                          pattern={FR_PHONE_PATTERN}
+                          title="Numéro français, par exemple 06 12 34 56 78"
+                          placeholder="06 12 34 56 78"
+                          value={referralForm.referrerPhone}
+                          onChange={(e) => setReferralForm({ ...referralForm, referrerPhone: e.target.value })}
+                          className="dd-input"
+                        />
+                      </div>
+                      <div className="dd-form-group" style={{ marginBottom: 0 }}>
+                        <label className="dd-form-label" htmlFor="ref-friend-name">Nom de votre ami *</label>
+                        <input
+                          id="ref-friend-name"
+                          type="text"
+                          required
+                          placeholder="Marie Martin"
+                          value={referralForm.friendName}
+                          onChange={(e) => setReferralForm({ ...referralForm, friendName: e.target.value })}
+                          className="dd-input"
+                        />
+                      </div>
+                      <div className="dd-form-group" style={{ marginBottom: 0 }}>
+                        <label className="dd-form-label" htmlFor="ref-friend-phone">Son téléphone *</label>
+                        <input
+                          id="ref-friend-phone"
+                          type="tel"
+                          inputMode="tel"
+                          required
+                          pattern={FR_PHONE_PATTERN}
+                          title="Numéro français, par exemple 07 12 34 56 78"
+                          placeholder="07 12 34 56 78"
+                          value={referralForm.friendPhone}
+                          onChange={(e) => setReferralForm({ ...referralForm, friendPhone: e.target.value })}
+                          className="dd-input"
+                        />
+                      </div>
+                    </div>
+
+                    {referralError && (
+                      <div role="alert" style={{ background: 'rgba(239, 68, 68, 0.12)', border: '1px solid rgba(239, 68, 68, 0.4)', color: '#FCA5A5', borderRadius: '10px', padding: '10px 12px', fontSize: '13px', lineHeight: 1.4 }}>
+                        {referralError}
+                      </div>
+                    )}
+
+                    <button type="submit" className="dd-btn dd-btn-gold" style={{ width: '100%', padding: '15px', borderRadius: '14px', fontSize: '15px', fontWeight: 800 }}>
+                      <span>Enregistrer mon parrainage →</span>
+                    </button>
+                    <p style={{ margin: 0, fontSize: '12px', color: '#64748B', textAlign: 'center', lineHeight: 1.5 }}>
+                      Nous contactons votre ami pour son rattachement. Votre prime est versée sur le numéro indiqué ci-dessus.
+                    </p>
+                  </form>
+                </div>
               ) : (
-                <div style={{ textAlign: 'center', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.35)', padding: '32px 24px', borderRadius: '18px', boxShadow: '0 8px 30px rgba(0,0,0,0.5)' }}>
-                  <div style={{ color: '#34D399', fontSize: '22px', fontWeight: 900, marginBottom: '10px' }}>✓ Parrainage Transmis !</div>
-                  <p style={{ fontSize: '13.5px', color: '#A7F3D0', lineHeight: 1.6 }}>
-                    Félicitations, la demande de parrainage pour votre ami **{referralForm.friendFirstName}** a bien été transmise à notre support Nordrive.
+                <div style={{ textAlign: 'center', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.35)', padding: '32px 24px', borderRadius: '20px', boxShadow: '0 8px 30px rgba(0,0,0,0.5)' }}>
+                  <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: 'rgba(52, 211, 153, 0.18)', border: '2px solid #34D399', display: 'grid', placeItems: 'center', margin: '0 auto 14px' }}>
+                    <CheckCircle2 size={28} color="#34D399" />
+                  </div>
+                  <h2 style={{ color: '#34D399', fontSize: '22px', fontWeight: 900, margin: '0 0 10px' }}>Parrainage enregistré</h2>
+                  <p style={{ fontSize: '14px', color: '#A7F3D0', lineHeight: 1.6, margin: '0 0 6px' }}>
+                    La demande pour <strong style={{ color: '#FFF' }}>{referralForm.friendName}</strong> a bien été transmise à notre équipe.
                   </p>
-                  <div style={{ width: '60px', height: '1px', background: 'rgba(52, 211, 153, 0.25)', margin: '16px auto' }} />
-                  <p style={{ fontSize: '12px', color: '#9CA3AF', lineHeight: 1.5 }}>
-                    Dès que votre filleul effectue son rattachement et valide sa première semaine de courses, votre prime allant **jusqu'à 200€** est débloquée immédiatement.
+                  <p style={{ fontSize: '13px', color: '#94A3B8', lineHeight: 1.6, margin: '0 0 20px' }}>
+                    Dès que son rattachement est validé et sa première semaine de courses effectuée, votre prime (jusqu'à 200 €) vous est versée.
                   </p>
+                  <button
+                    type="button"
+                    className="dd-btn dd-btn-gold"
+                    onClick={() => {
+                      setReferralForm(prev => ({ ...prev, friendName: '', friendPhone: '' }));
+                      setReferralSubmitted(false);
+                    }}
+                    style={{ width: '100%', padding: '14px', borderRadius: '14px', fontSize: '14px', fontWeight: 800 }}
+                  >
+                    <span>Parrainer un autre ami</span>
+                  </button>
                 </div>
               )}
             </div>
-          </div>
-        </section>
+          </section>
         )}
 
         {currentPath === '/qui-sommes-nous' && (
           <>
-            <section id="qui-sommes-nous" className="dd-container" style={{ padding: isMobile ? '180px 20px 60px' : '120px 20px 60px' }}>
+            <section id="qui-sommes-nous" className="dd-container" style={{ padding: isMobile ? '28px 20px 60px' : '48px 20px 60px' }}>
               <div style={{ marginBottom: '30px', textAlign: 'left', maxWidth: '850px', margin: '0 auto 20px' }}>
                 <a href="/" onClick={(e) => navigateTo(e, '/')} style={{ color: '#38BDF8', textDecoration: 'none', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                   ← Retour à l'accueil
@@ -2696,7 +2212,7 @@ Bonjour, je souhaite recevoir mon devis d'assurance VTC.`;
         )}
 
         {currentPath === '/faq' && (
-          <section id="faq" className="dd-container" style={{ maxWidth: '800px', padding: isMobile ? '180px 20px 50px' : '120px 20px 50px' }}>
+          <section id="faq" className="dd-container" style={{ maxWidth: '800px', padding: isMobile ? '28px 20px 50px' : '48px 20px 50px' }}>
             <div style={{ marginBottom: '30px', textAlign: 'left' }}>
               <a href="/" onClick={(e) => navigateTo(e, '/')} style={{ color: '#38BDF8', textDecoration: 'none', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                 ← Retour à l'accueil
@@ -2724,7 +2240,7 @@ Bonjour, je souhaite recevoir mon devis d'assurance VTC.`;
         )}
 
         {currentPath === '/contact' && (
-          <section id="contact" className="dd-container" style={{ padding: isMobile ? '180px 20px 80px' : '120px 20px 80px' }}>
+          <section id="contact" className="dd-container" style={{ padding: isMobile ? '28px 20px 70px' : '48px 20px 80px' }}>
             <div style={{ marginBottom: '30px', textAlign: 'left', maxWidth: '900px', margin: '0 auto 20px' }}>
               <a href="/" onClick={(e) => navigateTo(e, '/')} style={{ color: '#38BDF8', textDecoration: 'none', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                 ← Retour à l'accueil
@@ -3145,8 +2661,8 @@ Bonjour, je souhaite recevoir mon devis d'assurance VTC.`;
               flex: 1,
               padding: '14px 20px',
               borderRadius: '100px',
-              background: 'linear-gradient(135deg, #0284C7 0%, #0D9488 100%)',
-              color: '#FFF',
+              background: 'linear-gradient(135deg, #FBE5A9 0%, #E5C158 55%, #C99A22 100%)',
+              color: '#1B1305',
               fontSize: '14.5px',
               fontWeight: 800,
               textDecoration: 'none',
@@ -3155,7 +2671,7 @@ Bonjour, je souhaite recevoir mon devis d'assurance VTC.`;
               alignItems: 'center',
               justifyContent: 'center',
               gap: '8px',
-              boxShadow: '0 12px 30px rgba(2, 132, 199, 0.45), 0 0 15px rgba(56, 189, 248, 0.3)',
+              boxShadow: '0 12px 30px rgba(0, 0, 0, 0.5), 0 0 18px rgba(229, 193, 88, 0.3)',
               border: '1px solid rgba(255, 255, 255, 0.2)',
               whiteSpace: 'nowrap',
             }}
