@@ -1,13 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  MessageSquare, 
-  Gift, 
-  Phone, 
-  Mail, 
-  MapPin, 
-  Send,
-  Award,
-  Users,
+  MessageSquare,
   Lock,
   UploadCloud,
   ShieldCheck,
@@ -22,6 +15,11 @@ import {
 import type { Driver, DriverDocument, PlatformType } from '../types/fleet';
 import { Background3D } from './Background3D';
 import { HomePage } from './HomePage';
+import { applySeo } from '../lib/seo';
+import { ComparatifPage, AssurancePage, SimulatorPage, ParrainagePage, AboutPage, FaqPage, ContactPage, NotFoundPage } from './SubPages';
+import { track, trackOnce } from '../lib/analytics';
+import { getAcquisition } from '../lib/acquisition';
+import { apiEnabled, SECURE_DOC_TYPES, sendMessage, submitApplicationSecure, submitMessageSecure } from '../lib/api';
 import { CustomCursor } from './CustomCursor';
 import { SignaturePad } from './SignaturePad';
 
@@ -34,15 +32,20 @@ interface PublicPortalProps {
   drivers: Driver[];
 }
 
+/** Adresse sans « / » final (« /faq/ » → « /faq ») */
+const normPath = (p: string) => p.replace(/\/+$/, '') || '/';
+
+/** Pages qui existent ; toute autre adresse affiche la page « introuvable » (et est servie en 404 par le serveur). */
+const KNOWN_PATHS = ['/', '/comparatif', '/assurance', '/simulateur', '/parrainage', '/qui-sommes-nous', '/faq', '/contact'];
+
 export const PublicPortal: React.FC<PublicPortalProps> = ({ onRegisterDriver, onOpenAdminCrm, drivers }) => {
   // Routing State
-  const [currentPath, setCurrentPath] = useState<string>(typeof window !== 'undefined' ? window.location.pathname : '/');
-  const isSubpage = currentPath !== '/';
+  const [currentPath, setCurrentPath] = useState<string>(typeof window !== 'undefined' ? normPath(window.location.pathname) : '/');
 
   // popstate listener for back/forward buttons
   useEffect(() => {
     const handlePopState = () => {
-      setCurrentPath(window.location.pathname);
+      setCurrentPath(normPath(window.location.pathname));
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
@@ -106,14 +109,10 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({ onRegisterDriver, on
 
 
 
-  // Display period for examples
-  const [beforeAfterActive, setBeforeAfterActive] = useState<'before' | 'after'>('after');
-
-  // FAQ Accordion Toggle
-  const [openFaq, setOpenFaq] = useState<number | null>(0);
-
   // RGPD Consent
   const [rgpdConsent, setRgpdConsent] = useState<boolean>(false);
+  // Champ piège anti-robot (invisible pour les humains, doit rester vide)
+  const [honeypot, setHoneypot] = useState<string>('');
 
   // Cookie banner
   const [legalModalContent, setLegalModalContent] = useState<'mentions' | 'confidentialite' | 'cgu' | 'rgpd' | null>(null);
@@ -316,23 +315,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({ onRegisterDriver, on
     };
   }, []);
 
-  // Simulator State (CA Hebdomadaire & Mensuel)
-  const [simPeriod, setSimPeriod] = useState<'semaine' | 'mois'>('semaine');
-  const [weeklyTurnover, setWeeklyTurnover] = useState<number>(1000);
-  const [monthlyTurnover, setMonthlyTurnover] = useState<number>(4000);
-
-  // Simulator Math: Auto-Entrepreneur vs Nordrive
-  // Hebdomadaire
-  const autoNetWeek = Math.round(weeklyTurnover * 0.71);
-  const fleetFeeWeekly = weeklyTurnover > 0 ? 50 : 0; // 50€/semaine travaillée
-  const fleetNetWeek = Math.max(0, weeklyTurnover - fleetFeeWeekly);
-  const gainExtraWeek = fleetNetWeek - autoNetWeek;
-
-  // Mensuel
-  const autoNetMonth = Math.round(monthlyTurnover * 0.71);
-  const fleetFeeMonthly = monthlyTurnover > 0 ? 50 * 4 : 0; // 200€/mois
-  const fleetNetMonth = Math.max(0, monthlyTurnover - fleetFeeMonthly);
-  const gainExtraMonth = fleetNetMonth - autoNetMonth;
+  // (le simulateur de gains vit désormais dans SubPages.tsx : SimulatorPage)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -351,8 +334,26 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({ onRegisterDriver, on
     const cloudinaryUrls: Record<string, string> = {};
     const docKeys: Array<keyof typeof optionalDocs> = ['vtcRecto', 'vtcVerso', 'rcCirculation', 'carteGrise', 'memoAssurance', 'signature'];
 
-    // Upload files to Cloudinary in background/sequentially
-    for (const key of docKeys) {
+    // Circuit SÉCURISÉ (fonctions serveur + stockage privé) quand il est configuré ; sinon ancien circuit ci-dessous.
+    if (apiEnabled) {
+      const secure = await submitApplicationSecure(
+        {
+          firstName: fName || 'Chauffeur', lastName: lName || 'Nouveau', phone: formData.phone, email: formData.email,
+          city: formData.city, vtcCardStatus: formData.vtcCardStatus, hasVehicle: formData.hasVehicle,
+          vehicleModel: formData.vehicleModel, vehiclePlate: formData.vehiclePlate, platforms: formData.platforms,
+          notes: formData.notes, source: getAcquisition().source, sourceDetail: getAcquisition().detail,
+          consentRgpd: true, website: honeypot,
+        },
+        docKeys.flatMap((k) => {
+          const f = optionalDocs[k]?.file;
+          return f ? [{ key: k, docType: SECURE_DOC_TYPES[k], file: f }] : [];
+        }),
+      );
+      for (const k of secure.uploaded) cloudinaryUrls[k] = 'stocke-en-securite';
+    }
+
+    // (ancien circuit, inactif quand le circuit sécurisé est configuré) Upload files to Cloudinary
+    for (const key of apiEnabled ? [] : docKeys) {
       const doc = optionalDocs[key];
       if (doc && doc.file) {
         try {
@@ -368,7 +369,6 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({ onRegisterDriver, on
           if (uploadRes.ok) {
             const uploadResult = await uploadRes.json();
             cloudinaryUrls[key] = uploadResult.secure_url;
-            console.log(`Cloudinary upload success for ${key}:`, uploadResult.secure_url);
           } else {
             const errData = await uploadRes.json();
             console.error(`Cloudinary upload failed for ${key}:`, errData.error?.message || 'Unknown error');
@@ -395,9 +395,12 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({ onRegisterDriver, on
       hasVtcCard: formData.vtcCardStatus === 'oui',
       rgpdConsent: rgpdConsent,
       rgpdConsentDate: new Date().toISOString(),
+      source: getAcquisition().source,
+      sourceDetail: getAcquisition().detail,
     }, uploadedDocsList);
 
-    // Asynchronously send complete data to Email inbox via Web3Forms API
+    // (ancien circuit) e-mail Web3Forms : inutile quand le circuit sécurisé est actif (la fonction serveur prévient l'équipe)
+    if (!apiEnabled) {
     const mailData = new FormData();
     mailData.append('access_key', '7dc10224-3e56-4c49-850d-cb01c1e52a5e');
     mailData.append('subject', `Nouvelle Inscription Chauffeur VTC - ${fName} ${lName}`);
@@ -412,6 +415,7 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({ onRegisterDriver, on
     mailData.append('Plaque Vehicule', formData.hasVehicle ? formData.vehiclePlate : 'N/A');
     mailData.append('Plateformes VTC', formData.platforms.join(', '));
     mailData.append('Notes & Commentaires', formData.notes || 'Aucun');
+    mailData.append('Source du visiteur', `${getAcquisition().source}${getAcquisition().detail ? ` (${getAcquisition().detail})` : ''}`);
 
     // Add Cloudinary Links to Web3Forms mail payload
     mailData.append('📄 Carte VTC Recto', cloudinaryUrls.vtcRecto || 'Non fournie');
@@ -430,10 +434,10 @@ export const PublicPortal: React.FC<PublicPortalProps> = ({ onRegisterDriver, on
           'Accept': 'application/json'
         }
       });
-      const data = await res.json();
-      console.log('Web3Forms submit success:', data);
+      await res.json();
     } catch (err) {
       console.error('Web3Forms submit error:', err);
+    }
     }
 
     // Format professional WhatsApp notification message
@@ -496,6 +500,9 @@ ${missingLabels.map(l => `* [A JOINDRE 📎] ${l}`).join('\n')}
     const whatsappUrl = `https://wa.me/33743767400?text=${encodeURIComponent(waMessage)}`;
     window.open(whatsappUrl, '_blank');
 
+    // Mesure (aucune donnée personnelle) : statut carte VTC et nombre de documents joints
+    track('Formulaire envoyé', { carteVtc: formData.vtcCardStatus, documents: uploadedDocsList.length });
+
     setCreatedDriverName(`${fName} ${lName}`);
     setIsSubmitting(false);
     setIsSubmitted(true);
@@ -504,7 +511,8 @@ ${missingLabels.map(l => `* [A JOINDRE 📎] ${l}`).join('\n')}
   const handleContactSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    // 1. Send E-mail via Web3Forms API
+    // 1. Envoi : fonction serveur si configurée, sinon ancien circuit Web3Forms
+    const sendLegacyContact = () => {
     const contactData = new FormData();
     contactData.append('access_key', '7dc10224-3e56-4c49-850d-cb01c1e52a5e');
     contactData.append('subject', `📬 Nouveau Message Contact - ${contactForm.name}`);
@@ -523,8 +531,10 @@ ${missingLabels.map(l => `* [A JOINDRE 📎] ${l}`).join('\n')}
       }
     })
     .then(res => res.json())
-    .then(data => console.log('Web3Forms contact success:', data))
+    .then(() => undefined)
     .catch(err => console.error('Web3Forms contact error:', err));
+    };
+    sendMessage('contact', { name: contactForm.name, phone: contactForm.phone, email: contactForm.email, message: contactForm.message }, sendLegacyContact);
 
     // 2. Format WhatsApp notification message
     const waContactMessage = `*** NOUVEAU MESSAGE DE CONTACT - NORDRIVE ***
@@ -536,6 +546,7 @@ ${contactForm.email ? `- Email : ${contactForm.email}\n` : ''}- Message : ${cont
     const whatsappUrl = `https://wa.me/33743767400?text=${encodeURIComponent(waContactMessage)}`;
     window.open(whatsappUrl, '_blank');
 
+    track('Message contact envoyé');
     setContactSubmitted(true);
   };
 
@@ -560,7 +571,8 @@ ${contactForm.email ? `- Email : ${contactForm.email}\n` : ''}- Message : ${cont
 
 Je parraine cet ami pour qu'il rejoigne la flotte Nordrive VTC. Merci d'enregistrer ma prime de 200€ !`;
 
-    // 1. Send E-mail via Web3Forms in background
+    // 1. Envoi : fonction serveur si configurée, sinon ancien circuit Web3Forms
+    const sendLegacyReferral = () => {
     const referralData = new FormData();
     referralData.append('access_key', '7dc10224-3e56-4c49-850d-cb01c1e52a5e');
     referralData.append('subject', `Nouveau Parrainage VTC par ${referralForm.referrerName}`);
@@ -577,12 +589,15 @@ Je parraine cet ami pour qu'il rejoigne la flotte Nordrive VTC. Merci d'enregist
       }
     })
     .then(res => res.json())
-    .then(data => console.log('Web3Forms referral success:', data))
+    .then(() => undefined)
     .catch(err => console.error('Web3Forms referral error:', err));
+    };
+    sendMessage('referral', { referrerName: referralForm.referrerName, referrerPhone: referralForm.referrerPhone, friendName: fName, friendPhone: referralForm.friendPhone }, sendLegacyReferral);
 
     // 2. Open WhatsApp Web / App
     const whatsappUrl = `https://wa.me/33743767400?text=${encodeURIComponent(waReferralMessage)}`;
     window.open(whatsappUrl, '_blank');
+    track('Parrainage envoyé');
     setReferralSubmitted(true);
   };
 
@@ -604,8 +619,8 @@ Je parraine cet ami pour qu'il rejoigne la flotte Nordrive VTC. Merci d'enregist
     const cloudinaryUrls: Record<string, string> = {};
     const docKeys: Array<keyof typeof insuranceDocs> = ['carteGrise', 'permisConduire', 'releveInformation'];
 
-    // Upload files to Cloudinary
-    for (const key of docKeys) {
+    // (ancien circuit) Upload files to Cloudinary : inactif avec le circuit sécurisé (les pièces d'assurance partent alors par WhatsApp)
+    for (const key of apiEnabled ? [] : docKeys) {
       const doc = insuranceDocs[key];
       if (doc && doc.file) {
         try {
@@ -621,7 +636,6 @@ Je parraine cet ami pour qu'il rejoigne la flotte Nordrive VTC. Merci d'enregist
           if (uploadRes.ok) {
             const uploadResult = await uploadRes.json();
             cloudinaryUrls[key] = uploadResult.secure_url;
-            console.log(`Cloudinary upload success for insurance doc ${key}:`, uploadResult.secure_url);
           }
         } catch (err) {
           console.error(`Error uploading ${key} to Cloudinary:`, err);
@@ -629,7 +643,14 @@ Je parraine cet ami pour qu'il rejoigne la flotte Nordrive VTC. Merci d'enregist
       }
     }
 
-    // 1. Send E-mail via Web3Forms API
+    // 1. Envoi : fonction serveur si configurée, sinon ancien circuit Web3Forms
+    if (apiEnabled) {
+      void submitMessageSecure('insurance', {
+        firstName: fName || 'Chauffeur', lastName: lName || '-', phone: insuranceForm.phone, email: insuranceForm.email,
+        city: insuranceForm.city, insuranceType: insuranceForm.insuranceType, vehicleModel: insuranceForm.vehicleModel,
+        vehiclePlate: insuranceForm.vehiclePlate, notes: insuranceForm.notes,
+      });
+    } else {
     const mailData = new FormData();
     mailData.append('access_key', '7dc10224-3e56-4c49-850d-cb01c1e52a5e');
     mailData.append('subject', `🛡️ Nouvelle Demande Devis Assurance VTC - ${fName} ${lName}`);
@@ -652,10 +673,10 @@ Je parraine cet ami pour qu'il rejoigne la flotte Nordrive VTC. Merci d'enregist
         body: mailData,
         headers: { 'Accept': 'application/json' }
       });
-      const data = await res.json();
-      console.log('Web3Forms insurance submit success:', data);
+      await res.json();
     } catch (err) {
       console.error('Web3Forms insurance submit error:', err);
+    }
     }
 
     // 2. Open WhatsApp Web / App with prefilled message
@@ -680,6 +701,7 @@ Bonjour, je souhaite recevoir mon devis d'assurance VTC.`;
     const whatsappUrl = `https://wa.me/33743767400?text=${encodeURIComponent(waMessage)}`;
     window.open(whatsappUrl, '_blank');
 
+    track('Devis assurance envoyé', { offre: insuranceForm.insuranceType });
     setInsuranceIsSubmitting(false);
     setInsuranceSubmitted(true);
   };
@@ -723,6 +745,267 @@ Bonjour, je souhaite recevoir mon devis d'assurance VTC.`;
     }
   ];
 
+  // SEO : titre, description, canonique et données structurées propres à chaque page
+  useEffect(() => {
+    applySeo(currentPath, faqList.map(({ q, a }) => ({ q, a })));
+  }, [currentPath]);
+
+  // Formulaire de devis assurance VTC (affiché dans AssurancePage)
+  const renderInsuranceForm = () => (
+            <div className="dd-card-glow" style={{ background: 'linear-gradient(160deg, rgba(10, 16, 36, 0.96) 0%, rgba(5, 10, 22, 0.99) 100%)', border: '1px solid rgba(56, 189, 248, 0.28)', boxShadow: '0 0 50px rgba(56, 189, 248, 0.1), 0 24px 80px rgba(0,0,0,0.8)', padding: isMobile ? '24px 18px' : '36px 32px', borderRadius: '28px' }}>
+              
+              {!insuranceSubmitted ? (
+                <form onSubmit={handleInsuranceSubmit}>
+                  
+                  <div style={{ borderBottom: '1px solid rgba(56, 189, 248, 0.15)', paddingBottom: '14px', marginBottom: '24px' }}>
+                    <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#FFF', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                      <FileText size={20} style={{ color: '#38BDF8' }} />
+                      Formulaire Devis Assurance VTC Express
+                    </h3>
+                  </div>
+
+                  {/* IDENTITÉ */}
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+                    <div className="dd-form-group" style={{ marginBottom: 0 }}>
+                      <label className="dd-form-label">👤 Prénom *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Ex: Jean"
+                        value={insuranceForm.firstName}
+                        onChange={(e) => setInsuranceForm({ ...insuranceForm, firstName: e.target.value })}
+                        className="dd-input"
+                      />
+                    </div>
+                    <div className="dd-form-group" style={{ marginBottom: 0 }}>
+                      <label className="dd-form-label">👤 Nom *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Ex: Dupont"
+                        value={insuranceForm.lastName}
+                        onChange={(e) => setInsuranceForm({ ...insuranceForm, lastName: e.target.value })}
+                        className="dd-input"
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+                    <div className="dd-form-group" style={{ marginBottom: 0 }}>
+                      <label className="dd-form-label">📱 Téléphone WhatsApp *</label>
+                      <input
+                        type="tel"
+                        required
+                        placeholder="06 12 34 56 78"
+                        value={insuranceForm.phone}
+                        onChange={(e) => setInsuranceForm({ ...insuranceForm, phone: e.target.value })}
+                        className="dd-input"
+                      />
+                    </div>
+                    <div className="dd-form-group" style={{ marginBottom: 0 }}>
+                      <label className="dd-form-label">✉️ Email *</label>
+                      <input
+                        type="email"
+                        required
+                        placeholder="prenom.nom@gmail.com"
+                        value={insuranceForm.email}
+                        onChange={(e) => setInsuranceForm({ ...insuranceForm, email: e.target.value })}
+                        className="dd-input"
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
+                    <div className="dd-form-group" style={{ marginBottom: 0 }}>
+                      <label className="dd-form-label">📍 Ville de résidence *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Ex: Paris, Lyon, Lille..."
+                        value={insuranceForm.city}
+                        onChange={(e) => setInsuranceForm({ ...insuranceForm, city: e.target.value })}
+                        className="dd-input"
+                      />
+                    </div>
+                    <div className="dd-form-group" style={{ marginBottom: 0 }}>
+                      <label className="dd-form-label">🛡️ Formule souhaitée</label>
+                      <select
+                        value={insuranceForm.insuranceType}
+                        onChange={(e) => setInsuranceForm({ ...insuranceForm, insuranceType: e.target.value as any })}
+                        className="dd-input"
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <option value="rc_circulation_pro">RC Circulation Pro (Transport de personnes)</option>
+                        <option value="flotte_vtc">Assurance Véhicule Flotte VTC</option>
+                        <option value="vehicule_tout_risque">Assurance Véhicule Tout Risque VTC</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
+                    <div className="dd-form-group" style={{ marginBottom: 0 }}>
+                      <label className="dd-form-label">🚘 Modèle du Véhicule (Optionnel)</label>
+                      <input
+                        type="text"
+                        placeholder="Ex: Toyota Corolla, Peugeot 508..."
+                        value={insuranceForm.vehicleModel}
+                        onChange={(e) => setInsuranceForm({ ...insuranceForm, vehicleModel: e.target.value })}
+                        className="dd-input"
+                      />
+                    </div>
+                    <div className="dd-form-group" style={{ marginBottom: 0 }}>
+                      <label className="dd-form-label">🔤 Immatriculation (Optionnel)</label>
+                      <input
+                        type="text"
+                        placeholder="Ex: AB-123-CD"
+                        value={insuranceForm.vehiclePlate}
+                        onChange={(e) => setInsuranceForm({ ...insuranceForm, vehiclePlate: e.target.value })}
+                        className="dd-input"
+                      />
+                    </div>
+                  </div>
+
+                  {/* UPLOAD DES 3 DOCUMENTS */}
+                  <div style={{ background: 'rgba(56, 189, 248, 0.04)', border: '1px solid rgba(56, 189, 248, 0.2)', padding: isMobile ? '16px' : '20px', borderRadius: '18px', marginBottom: '24px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+                      <UploadCloud size={20} style={{ color: '#38BDF8' }} />
+                      <span style={{ fontSize: '13px', fontWeight: 800, color: '#FFF', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        📁 PIÈCES JUSTIFICATIVES À JOINDRE (3 DOCUMENTS)
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: '12px' }}>
+                      
+                      {/* Document 1: Carte Grise */}
+                      <div style={{ background: insuranceDocs.carteGrise ? 'rgba(16, 185, 129, 0.1)' : 'rgba(15, 23, 42, 0.8)', border: insuranceDocs.carteGrise ? '1px solid rgba(16, 185, 129, 0.4)' : '1px dashed rgba(56, 189, 248, 0.3)', borderRadius: '14px', padding: '14px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '11px', fontWeight: 800, color: insuranceDocs.carteGrise ? '#34D399' : '#38BDF8', marginBottom: '6px', textTransform: 'uppercase' }}>
+                          {insuranceDocs.carteGrise ? '✓ Carte Grise' : '1. Carte Grise *'}
+                        </div>
+                        {insuranceDocs.carteGrise ? (
+                          <div style={{ fontSize: '11px', color: '#A7F3D0', wordBreak: 'break-all', fontWeight: 600 }}>
+                            {insuranceDocs.carteGrise.name}
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: '11px', color: '#9CA3AF', display: 'block', marginBottom: '8px' }}>Format PDF / JPG / PNG</span>
+                        )}
+                        <label className="dd-btn" style={{ display: 'inline-block', marginTop: '8px', padding: '6px 12px', fontSize: '10.5px', background: insuranceDocs.carteGrise ? 'rgba(16, 185, 129, 0.2)' : 'rgba(56, 189, 248, 0.15)', color: insuranceDocs.carteGrise ? '#34D399' : '#38BDF8', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 700 }}>
+                          {insuranceDocs.carteGrise ? 'Changer' : 'Parcourir...'}
+                          <input type="file" accept="image/*,application/pdf" onChange={(e) => handleInsuranceFileChange('carteGrise', e)} style={{ display: 'none' }} />
+                        </label>
+                      </div>
+
+                      {/* Document 2: Permis de conduire */}
+                      <div style={{ background: insuranceDocs.permisConduire ? 'rgba(16, 185, 129, 0.1)' : 'rgba(15, 23, 42, 0.8)', border: insuranceDocs.permisConduire ? '1px solid rgba(16, 185, 129, 0.4)' : '1px dashed rgba(56, 189, 248, 0.3)', borderRadius: '14px', padding: '14px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '11px', fontWeight: 800, color: insuranceDocs.permisConduire ? '#34D399' : '#38BDF8', marginBottom: '6px', textTransform: 'uppercase' }}>
+                          {insuranceDocs.permisConduire ? '✓ Permis de Conduire' : '2. Permis de conduire *'}
+                        </div>
+                        {insuranceDocs.permisConduire ? (
+                          <div style={{ fontSize: '11px', color: '#A7F3D0', wordBreak: 'break-all', fontWeight: 600 }}>
+                            {insuranceDocs.permisConduire.name}
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: '11px', color: '#9CA3AF', display: 'block', marginBottom: '8px' }}>Format PDF / JPG / PNG</span>
+                        )}
+                        <label className="dd-btn" style={{ display: 'inline-block', marginTop: '8px', padding: '6px 12px', fontSize: '10.5px', background: insuranceDocs.permisConduire ? 'rgba(16, 185, 129, 0.2)' : 'rgba(56, 189, 248, 0.15)', color: insuranceDocs.permisConduire ? '#34D399' : '#38BDF8', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 700 }}>
+                          {insuranceDocs.permisConduire ? 'Changer' : 'Parcourir...'}
+                          <input type="file" accept="image/*,application/pdf" onChange={(e) => handleInsuranceFileChange('permisConduire', e)} style={{ display: 'none' }} />
+                        </label>
+                      </div>
+
+                      {/* Document 3: Relevé d'information +36 mois */}
+                      <div style={{ background: insuranceDocs.releveInformation ? 'rgba(16, 185, 129, 0.1)' : 'rgba(15, 23, 42, 0.8)', border: insuranceDocs.releveInformation ? '1px solid rgba(16, 185, 129, 0.4)' : '1px dashed rgba(56, 189, 248, 0.3)', borderRadius: '14px', padding: '14px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '11px', fontWeight: 800, color: insuranceDocs.releveInformation ? '#34D399' : '#F59E0B', marginBottom: '6px', textTransform: 'uppercase' }}>
+                          {insuranceDocs.releveInformation ? '✓ Relevé d\'Info (+36m)' : '3. Relevé d\'Information *'}
+                        </div>
+                        {insuranceDocs.releveInformation ? (
+                          <div style={{ fontSize: '11px', color: '#A7F3D0', wordBreak: 'break-all', fontWeight: 600 }}>
+                            {insuranceDocs.releveInformation.name}
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: '10.5px', color: '#9CA3AF', display: 'block', marginBottom: '8px' }}>Relevé d'assuré (+36 mois)</span>
+                        )}
+                        <label className="dd-btn" style={{ display: 'inline-block', marginTop: '8px', padding: '6px 12px', fontSize: '10.5px', background: insuranceDocs.releveInformation ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.15)', color: insuranceDocs.releveInformation ? '#34D399' : '#FBBF24', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 700 }}>
+                          {insuranceDocs.releveInformation ? 'Changer' : 'Parcourir...'}
+                          <input type="file" accept="image/*,application/pdf" onChange={(e) => handleInsuranceFileChange('releveInformation', e)} style={{ display: 'none' }} />
+                        </label>
+                      </div>
+
+                    </div>
+                  </div>
+
+                  <div className="dd-form-group" style={{ marginBottom: '24px' }}>
+                    <label className="dd-form-label">💬 Remarques ou précisions (Optionnel)</label>
+                    <textarea
+                      rows={2}
+                      placeholder="Précisez votre bonus/malus actuel, antécédents ou toute question particulière..."
+                      value={insuranceForm.notes}
+                      onChange={(e) => setInsuranceForm({ ...insuranceForm, notes: e.target.value })}
+                      className="dd-input"
+                      style={{ resize: 'vertical' }}
+                    />
+                  </div>
+
+                  {/* SUBMIT BUTTON */}
+                  <button
+                    type="submit"
+                    disabled={insuranceIsSubmitting}
+                    className="dd-btn dd-btn-primary"
+                    style={{
+                      width: '100%',
+                      padding: '16px 24px',
+                      borderRadius: '100px',
+                      fontSize: '15px',
+                      fontWeight: 900,
+                      justifyContent: 'center',
+                      background: 'linear-gradient(135deg, #FBE5A9 0%, #E5C158 55%, #C99A22 100%)',
+                      color: '#1B1305',
+                      border: 'none',
+                      boxShadow: '0 10px 30px rgba(229, 193, 88, 0.35)',
+                      opacity: insuranceIsSubmitting ? 0.7 : 1,
+                      cursor: insuranceIsSubmitting ? 'wait' : 'pointer'
+                    }}
+                  >
+                    {insuranceIsSubmitting ? (
+                      <span>⏳ Téléversement des pièces & Envoi en cours...</span>
+                    ) : (
+                      <span>🛡️ Recevoir mon devis d'Assurance par Email & WhatsApp →</span>
+                    )}
+                  </button>
+                </form>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '32px 16px' }}>
+                  <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.15)', border: '2px solid #34D399', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', color: '#34D399' }}>
+                    <CheckCircle2 size={36} />
+                  </div>
+                  <h3 style={{ fontSize: '24px', fontWeight: 900, color: '#FFF', marginBottom: '12px' }}>
+                    Votre demande d'assurance VTC a été envoyée !
+                  </h3>
+                  <p style={{ fontSize: '14px', color: '#A7F3D0', maxWidth: '600px', margin: '0 auto 20px', lineHeight: 1.6 }}>
+                    Merci <strong>{insuranceForm.firstName}</strong>. Vos pièces justificatives (Carte Grise, Permis et Relevé d'information) ont été transmises à notre équipe. Nous étudions votre profil et vous envoyons le devis le plus avantageux dans les plus brefs délais.
+                  </p>
+                  <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                    <a
+                      href="https://wa.me/33743767400"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="dd-btn dd-btn-whatsapp"
+                      style={{ padding: '12px 24px', borderRadius: '100px', fontSize: '13.5px', fontWeight: 800, background: '#25D366', color: '#FFF', textDecoration: 'none' }}
+                    >
+                      <MessageSquare size={16} /> Ouvrir WhatsApp Direct
+                    </a>
+                    <button
+                      onClick={() => setInsuranceSubmitted(false)}
+                      style={{ padding: '12px 24px', borderRadius: '100px', fontSize: '13.5px', fontWeight: 700, background: 'rgba(255, 255, 255, 0.08)', color: '#FFF', border: '1px solid rgba(255, 255, 255, 0.2)', cursor: 'pointer' }}
+                    >
+                      Nouveau devis
+                    </button>
+                  </div>
+                </div>
+              )}
+
+            </div>
+  );
+
   // Registration Form Render helper (closure)
   const renderRegistrationForm = () => {
     const allDocsUploaded = !!(
@@ -736,7 +1019,17 @@ Bonjour, je souhaite recevoir mon devis d'assurance VTC.`;
       <div className="dd-card-glow flyer-card-left" style={{ background: 'linear-gradient(165deg, rgba(22, 33, 47, 0.96) 0%, rgba(11, 18, 27, 0.99) 100%)', border: '1.5px solid rgba(229, 178, 70, 0.35)', boxShadow: '0 0 50px rgba(0,0,0,0.8), 0 0 30px rgba(229, 178, 70, 0.1)', padding: isMobile ? '20px 14px 18px' : '28px 24px 24px', borderRadius: isMobile ? '20px' : '24px', position: 'relative' }}>
 
         {!isSubmitted ? (
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={handleSubmit} onFocusCapture={() => trackOnce('form-start', 'Formulaire démarré')}>
+            <input
+              type="text"
+              name="website"
+              tabIndex={-1}
+              autoComplete="off"
+              aria-hidden="true"
+              value={honeypot}
+              onChange={(e) => setHoneypot(e.target.value)}
+              style={{ position: 'absolute', left: '-9999px', width: '1px', height: '1px', opacity: 0 }}
+            />
 
             {/* HEADER — Value Anchor */}
             <div style={{ marginBottom: '16px', paddingBottom: '12px', borderBottom: '1px solid rgba(229, 178, 70, 0.2)' }}>
@@ -1406,6 +1699,8 @@ Bonjour, je souhaite recevoir mon devis d'assurance VTC.`;
       )}
 
       <main style={{ position: 'relative', zIndex: 1 }}>
+        {!KNOWN_PATHS.includes(currentPath) && <NotFoundPage onNavigate={navigateTo} />}
+
         {currentPath === '/' && (
           <HomePage
             form={renderRegistrationForm()}
@@ -1415,935 +1710,38 @@ Bonjour, je souhaite recevoir mon devis d'assurance VTC.`;
           />
         )}
 
-        {/* SECTION: CHAOS VS SÉRÉNITÉ (DÉDIÉ SUR /comparatif) */}
-        {currentPath === '/comparatif' && (
-        <section id="comparatif" className="dd-container" style={{ padding: isMobile ? '28px 20px 70px' : '48px 20px 80px' }}>
-          <div style={{ marginBottom: '30px', textAlign: 'left', maxWidth: '1000px', margin: '0 auto 24px' }}>
-            <a href="/" onClick={(e) => navigateTo(e, '/')} style={{ color: '#38BDF8', textDecoration: 'none', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-              ← Retour à l'accueil
-            </a>
-          </div>
-          <div className="reveal-on-scroll" style={{ textAlign: 'center', maxWidth: '700px', margin: '0 auto 36px' }}>
-            <span style={{ fontSize: '12px', fontWeight: 800, color: '#38BDF8', textTransform: 'uppercase', letterSpacing: '1px' }}>⚖️ Comparaison Visuelle</span>
-            <h2 style={{ fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif", fontSize: '32px', fontWeight: 900, color: '#FFF', margin: '6px 0 12px' }}>
-              Le Chaos de la Plaine vs Le Sommet Nordrive
-            </h2>
-            <p style={{ fontSize: '13.5px', color: '#9CA3AF', lineHeight: '1.6' }}>
-              Voyez concrètement comment Nordrive transforme le cauchemar administratif en simplicité absolue.
-            </p>
+        {currentPath === '/comparatif' && <ComparatifPage onNavigate={navigateTo} />}
 
-            {/* Toggle Switcher Buttons */}
-            <div style={{ display: 'inline-flex', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.1)', padding: '4px', borderRadius: '100px', marginTop: '24px' }}>
-              <button 
-                onClick={() => setBeforeAfterActive('before')} 
-                style={{ 
-                  padding: '8px 20px', 
-                  borderRadius: '100px', 
-                  border: 'none', 
-                  background: beforeAfterActive === 'before' ? '#EF4444' : 'transparent',
-                  color: beforeAfterActive === 'before' ? '#000' : '#FFF',
-                  fontSize: '12px',
-                  fontWeight: 800,
-                  cursor: 'pointer',
-                  transition: 'background 0.2s, color 0.2s'
-                }}
-              >
-                ❌ L'Indépendance classique
-              </button>
-              <button 
-                onClick={() => setBeforeAfterActive('after')} 
-                style={{ 
-                  padding: '8px 20px', 
-                  borderRadius: '100px', 
-                  border: 'none', 
-                  background: beforeAfterActive === 'after' ? '#10B981' : 'transparent',
-                  color: beforeAfterActive === 'after' ? '#000' : '#FFF',
-                  fontSize: '12px',
-                  fontWeight: 800,
-                  cursor: 'pointer',
-                  transition: 'background 0.2s, color 0.2s'
-                }}
-              >
-                ✓ La Sérénité Nordrive
-              </button>
-            </div>
-          </div>
+        {currentPath === '/assurance' && <AssurancePage form={renderInsuranceForm()} onNavigate={navigateTo} />}
 
-          {/* Interactive Mockup Display */}
-          <div className="reveal-zoom" style={{ maxWidth: '750px', margin: '0 auto' }}>
-            {beforeAfterActive === 'before' ? (
-              <div style={{ background: 'rgba(239, 68, 68, 0.03)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: '24px', padding: '32px', boxShadow: '0 12px 40px rgba(239, 68, 68, 0.08)' }}>
-                <span style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#FCA5A5', fontSize: '10px', fontWeight: 900, padding: '4px 10px', borderRadius: '100px', textTransform: 'uppercase', display: 'inline-block', marginBottom: '16px' }}>Le statut indépendant classique</span>
-                <h3 style={{ fontSize: '20px', fontWeight: 900, color: '#FFF', marginBottom: '20px' }}>Le cauchemar des démarches obligatoires</h3>
-                
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {[
-                    { title: 'URSSAF & Charges', text: 'Déclaration mensuelle complexe, majorations de retard, calculs compliqués de TVA.', alert: true },
-                    { title: 'Zéro Protection Sociale', text: 'Aucun droit au chômage, mutuelle onéreuse et absence de fiche de paie officielle.', alert: true },
-                    { title: 'Trésorerie & Risques', text: 'Responsabilité personnelle directe en cas de contrôle ou de litige.', alert: true },
-                    { title: 'Support & Comptabilité', text: 'Comptable obligatoire (~2 000€/an), frais bancaires professionnels supplémentaires.', alert: true },
-                  ].map((item, idx) => (
-                    <div key={idx} style={{ display: 'flex', gap: '12px', background: 'rgba(2, 6, 16, 0.6)', border: '1px solid rgba(239, 68, 68, 0.1)', padding: '14px', borderRadius: '12px' }}>
-                      <span style={{ fontSize: '16px' }}>⚠️</span>
-                      <div>
-                        <strong style={{ display: 'block', fontSize: '13px', color: '#EF4444' }}>{item.title}</strong>
-                        <p style={{ fontSize: '12.5px', color: '#9CA3AF', margin: '2px 0 0' }}>{item.text}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div style={{ background: 'rgba(16, 185, 129, 0.03)', border: '1px solid rgba(16, 185, 129, 0.25)', borderRadius: '24px', padding: '32px', boxShadow: '0 12px 40px rgba(16, 185, 129, 0.08)' }}>
-                <span style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#A7F3D0', fontSize: '10px', fontWeight: 900, padding: '4px 10px', borderRadius: '100px', textTransform: 'uppercase', display: 'inline-block', marginBottom: '16px' }}>Le statut de rattaché Nordrive</span>
-                <h3 style={{ fontSize: '20px', fontWeight: 900, color: '#FFF', marginBottom: '20px' }}>Le confort du statut salarié</h3>
-                
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {[
-                    { title: 'Zéro Administration', text: 'Nordrive gère 100% de la facturation, déclarations sociales et déclarations fiscales.', check: true },
-                    { title: 'Vrai Contrat CDI', text: 'Bulletins de paie officiels édités chaque mois en toute conformité.', check: true },
-                    { title: 'Protection Intégrale', text: 'Mutuelle de flotte incluse, assurance responsabilité professionnelle couverte, cumul de retraite.', check: true },
-                    { title: 'Versement Garanti le Lundi', text: 'Paiement hebdomadaire de votre salaire net par virement automatique sur votre compte.', check: true },
-                  ].map((item, idx) => (
-                    <div key={idx} style={{ display: 'flex', gap: '12px', background: 'rgba(2, 6, 16, 0.6)', border: '1px solid rgba(16, 185, 129, 0.15)', padding: '14px', borderRadius: '12px' }}>
-                      <span style={{ fontSize: '16px', color: '#10B981' }}>✓</span>
-                      <div>
-                        <strong style={{ display: 'block', fontSize: '13px', color: '#34D399' }}>{item.title}</strong>
-                        <p style={{ fontSize: '12.5px', color: '#9CA3AF', margin: '2px 0 0' }}>{item.text}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </section>
-        )}
-
-        {/* SECTION: ASSURANCE VTC (DEVIS DÉDIÉ SUR /assurance) */}
-        {currentPath === '/assurance' && (
-        <section id="assurance" className="dd-container" style={{ padding: isMobile ? '28px 20px 70px' : '48px 20px 80px' }}>
-          <div style={{ marginBottom: '30px', textAlign: 'left', maxWidth: '1000px', margin: '0 auto 24px' }}>
-            <a href="/" onClick={(e) => navigateTo(e, '/')} style={{ color: '#38BDF8', textDecoration: 'none', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-              ← Retour à l'accueil
-            </a>
-          </div>
-
-          <div className="reveal-on-scroll" style={{ textAlign: 'center', maxWidth: '750px', margin: '0 auto 40px' }}>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(56, 189, 248, 0.12)', border: '1px solid rgba(56, 189, 248, 0.3)', color: '#38BDF8', fontSize: '11px', fontWeight: 800, padding: '4px 14px', borderRadius: '100px', marginBottom: '12px' }}>
-              🛡️ SERVICE ASSURANCE VTC & RC CIRCULATION
-            </div>
-            <h2 style={{ fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif", fontSize: isMobile ? '28px' : '36px', fontWeight: 900, color: '#FFF', margin: '6px 0 12px' }}>
-              Obtenez votre Tarif d'Assurance VTC en 1h
-            </h2>
-            <p style={{ fontSize: '14.5px', color: '#9CA3AF', lineHeight: '1.6' }}>
-              Remplissez le formulaire ci-dessous et joignez vos 3 documents (<strong style={{ color: '#FFF' }}>Carte Grise</strong>, <strong style={{ color: '#FFF' }}>Permis de conduire</strong> et <strong style={{ color: '#FFF' }}>Relevé d'information +36 mois</strong>). Vous recevrez immédiatement votre devis sur <strong style={{ color: '#34D399' }}>WhatsApp</strong> et par <strong style={{ color: '#38BDF8' }}>Email</strong>.
-            </p>
-          </div>
-
-          <div style={{ maxWidth: '900px', margin: '0 auto' }}>
-            <div className="dd-card-glow reveal-zoom" style={{ background: 'linear-gradient(160deg, rgba(10, 16, 36, 0.96) 0%, rgba(5, 10, 22, 0.99) 100%)', border: '1px solid rgba(56, 189, 248, 0.28)', boxShadow: '0 0 50px rgba(56, 189, 248, 0.1), 0 24px 80px rgba(0,0,0,0.8)', padding: isMobile ? '24px 18px' : '36px 32px', borderRadius: '28px' }}>
-              
-              {!insuranceSubmitted ? (
-                <form onSubmit={handleInsuranceSubmit}>
-                  
-                  <div style={{ borderBottom: '1px solid rgba(56, 189, 248, 0.15)', paddingBottom: '14px', marginBottom: '24px' }}>
-                    <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#FFF', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
-                      <FileText size={20} style={{ color: '#38BDF8' }} />
-                      Formulaire Devis Assurance VTC Express
-                    </h3>
-                  </div>
-
-                  {/* IDENTITÉ */}
-                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-                    <div className="dd-form-group" style={{ marginBottom: 0 }}>
-                      <label className="dd-form-label">👤 Prénom *</label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="Ex: Jean"
-                        value={insuranceForm.firstName}
-                        onChange={(e) => setInsuranceForm({ ...insuranceForm, firstName: e.target.value })}
-                        className="dd-input"
-                      />
-                    </div>
-                    <div className="dd-form-group" style={{ marginBottom: 0 }}>
-                      <label className="dd-form-label">👤 Nom *</label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="Ex: Dupont"
-                        value={insuranceForm.lastName}
-                        onChange={(e) => setInsuranceForm({ ...insuranceForm, lastName: e.target.value })}
-                        className="dd-input"
-                      />
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-                    <div className="dd-form-group" style={{ marginBottom: 0 }}>
-                      <label className="dd-form-label">📱 Téléphone WhatsApp *</label>
-                      <input
-                        type="tel"
-                        required
-                        placeholder="06 12 34 56 78"
-                        value={insuranceForm.phone}
-                        onChange={(e) => setInsuranceForm({ ...insuranceForm, phone: e.target.value })}
-                        className="dd-input"
-                      />
-                    </div>
-                    <div className="dd-form-group" style={{ marginBottom: 0 }}>
-                      <label className="dd-form-label">✉️ Email *</label>
-                      <input
-                        type="email"
-                        required
-                        placeholder="prenom.nom@gmail.com"
-                        value={insuranceForm.email}
-                        onChange={(e) => setInsuranceForm({ ...insuranceForm, email: e.target.value })}
-                        className="dd-input"
-                      />
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
-                    <div className="dd-form-group" style={{ marginBottom: 0 }}>
-                      <label className="dd-form-label">📍 Ville de résidence *</label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="Ex: Paris, Lyon, Lille..."
-                        value={insuranceForm.city}
-                        onChange={(e) => setInsuranceForm({ ...insuranceForm, city: e.target.value })}
-                        className="dd-input"
-                      />
-                    </div>
-                    <div className="dd-form-group" style={{ marginBottom: 0 }}>
-                      <label className="dd-form-label">🛡️ Formule souhaitée</label>
-                      <select
-                        value={insuranceForm.insuranceType}
-                        onChange={(e) => setInsuranceForm({ ...insuranceForm, insuranceType: e.target.value as any })}
-                        className="dd-input"
-                        style={{ cursor: 'pointer' }}
-                      >
-                        <option value="rc_circulation_pro">RC Circulation Pro (Transport de personnes)</option>
-                        <option value="flotte_vtc">Assurance Véhicule Flotte VTC</option>
-                        <option value="vehicule_tout_risque">Assurance Véhicule Tout Risque VTC</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
-                    <div className="dd-form-group" style={{ marginBottom: 0 }}>
-                      <label className="dd-form-label">🚘 Modèle du Véhicule (Optionnel)</label>
-                      <input
-                        type="text"
-                        placeholder="Ex: Toyota Corolla, Peugeot 508..."
-                        value={insuranceForm.vehicleModel}
-                        onChange={(e) => setInsuranceForm({ ...insuranceForm, vehicleModel: e.target.value })}
-                        className="dd-input"
-                      />
-                    </div>
-                    <div className="dd-form-group" style={{ marginBottom: 0 }}>
-                      <label className="dd-form-label">🔤 Immatriculation (Optionnel)</label>
-                      <input
-                        type="text"
-                        placeholder="Ex: AB-123-CD"
-                        value={insuranceForm.vehiclePlate}
-                        onChange={(e) => setInsuranceForm({ ...insuranceForm, vehiclePlate: e.target.value })}
-                        className="dd-input"
-                      />
-                    </div>
-                  </div>
-
-                  {/* UPLOAD DES 3 DOCUMENTS */}
-                  <div style={{ background: 'rgba(56, 189, 248, 0.04)', border: '1px solid rgba(56, 189, 248, 0.2)', padding: isMobile ? '16px' : '20px', borderRadius: '18px', marginBottom: '24px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-                      <UploadCloud size={20} style={{ color: '#38BDF8' }} />
-                      <span style={{ fontSize: '13px', fontWeight: 800, color: '#FFF', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                        📁 PIÈCES JUSTIFICATIVES À JOINDRE (3 DOCUMENTS)
-                      </span>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: '12px' }}>
-                      
-                      {/* Document 1: Carte Grise */}
-                      <div style={{ background: insuranceDocs.carteGrise ? 'rgba(16, 185, 129, 0.1)' : 'rgba(15, 23, 42, 0.8)', border: insuranceDocs.carteGrise ? '1px solid rgba(16, 185, 129, 0.4)' : '1px dashed rgba(56, 189, 248, 0.3)', borderRadius: '14px', padding: '14px', textAlign: 'center' }}>
-                        <div style={{ fontSize: '11px', fontWeight: 800, color: insuranceDocs.carteGrise ? '#34D399' : '#38BDF8', marginBottom: '6px', textTransform: 'uppercase' }}>
-                          {insuranceDocs.carteGrise ? '✓ Carte Grise' : '1. Carte Grise *'}
-                        </div>
-                        {insuranceDocs.carteGrise ? (
-                          <div style={{ fontSize: '11px', color: '#A7F3D0', wordBreak: 'break-all', fontWeight: 600 }}>
-                            {insuranceDocs.carteGrise.name}
-                          </div>
-                        ) : (
-                          <span style={{ fontSize: '11px', color: '#9CA3AF', display: 'block', marginBottom: '8px' }}>Format PDF / JPG / PNG</span>
-                        )}
-                        <label className="dd-btn" style={{ display: 'inline-block', marginTop: '8px', padding: '6px 12px', fontSize: '10.5px', background: insuranceDocs.carteGrise ? 'rgba(16, 185, 129, 0.2)' : 'rgba(56, 189, 248, 0.15)', color: insuranceDocs.carteGrise ? '#34D399' : '#38BDF8', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 700 }}>
-                          {insuranceDocs.carteGrise ? 'Changer' : 'Parcourir...'}
-                          <input type="file" accept="image/*,application/pdf" onChange={(e) => handleInsuranceFileChange('carteGrise', e)} style={{ display: 'none' }} />
-                        </label>
-                      </div>
-
-                      {/* Document 2: Permis de conduire */}
-                      <div style={{ background: insuranceDocs.permisConduire ? 'rgba(16, 185, 129, 0.1)' : 'rgba(15, 23, 42, 0.8)', border: insuranceDocs.permisConduire ? '1px solid rgba(16, 185, 129, 0.4)' : '1px dashed rgba(56, 189, 248, 0.3)', borderRadius: '14px', padding: '14px', textAlign: 'center' }}>
-                        <div style={{ fontSize: '11px', fontWeight: 800, color: insuranceDocs.permisConduire ? '#34D399' : '#38BDF8', marginBottom: '6px', textTransform: 'uppercase' }}>
-                          {insuranceDocs.permisConduire ? '✓ Permis de Conduire' : '2. Permis de conduire *'}
-                        </div>
-                        {insuranceDocs.permisConduire ? (
-                          <div style={{ fontSize: '11px', color: '#A7F3D0', wordBreak: 'break-all', fontWeight: 600 }}>
-                            {insuranceDocs.permisConduire.name}
-                          </div>
-                        ) : (
-                          <span style={{ fontSize: '11px', color: '#9CA3AF', display: 'block', marginBottom: '8px' }}>Format PDF / JPG / PNG</span>
-                        )}
-                        <label className="dd-btn" style={{ display: 'inline-block', marginTop: '8px', padding: '6px 12px', fontSize: '10.5px', background: insuranceDocs.permisConduire ? 'rgba(16, 185, 129, 0.2)' : 'rgba(56, 189, 248, 0.15)', color: insuranceDocs.permisConduire ? '#34D399' : '#38BDF8', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 700 }}>
-                          {insuranceDocs.permisConduire ? 'Changer' : 'Parcourir...'}
-                          <input type="file" accept="image/*,application/pdf" onChange={(e) => handleInsuranceFileChange('permisConduire', e)} style={{ display: 'none' }} />
-                        </label>
-                      </div>
-
-                      {/* Document 3: Relevé d'information +36 mois */}
-                      <div style={{ background: insuranceDocs.releveInformation ? 'rgba(16, 185, 129, 0.1)' : 'rgba(15, 23, 42, 0.8)', border: insuranceDocs.releveInformation ? '1px solid rgba(16, 185, 129, 0.4)' : '1px dashed rgba(56, 189, 248, 0.3)', borderRadius: '14px', padding: '14px', textAlign: 'center' }}>
-                        <div style={{ fontSize: '11px', fontWeight: 800, color: insuranceDocs.releveInformation ? '#34D399' : '#F59E0B', marginBottom: '6px', textTransform: 'uppercase' }}>
-                          {insuranceDocs.releveInformation ? '✓ Relevé d\'Info (+36m)' : '3. Relevé d\'Information *'}
-                        </div>
-                        {insuranceDocs.releveInformation ? (
-                          <div style={{ fontSize: '11px', color: '#A7F3D0', wordBreak: 'break-all', fontWeight: 600 }}>
-                            {insuranceDocs.releveInformation.name}
-                          </div>
-                        ) : (
-                          <span style={{ fontSize: '10.5px', color: '#9CA3AF', display: 'block', marginBottom: '8px' }}>Relevé d'assuré (+36 mois)</span>
-                        )}
-                        <label className="dd-btn" style={{ display: 'inline-block', marginTop: '8px', padding: '6px 12px', fontSize: '10.5px', background: insuranceDocs.releveInformation ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.15)', color: insuranceDocs.releveInformation ? '#34D399' : '#FBBF24', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 700 }}>
-                          {insuranceDocs.releveInformation ? 'Changer' : 'Parcourir...'}
-                          <input type="file" accept="image/*,application/pdf" onChange={(e) => handleInsuranceFileChange('releveInformation', e)} style={{ display: 'none' }} />
-                        </label>
-                      </div>
-
-                    </div>
-                  </div>
-
-                  <div className="dd-form-group" style={{ marginBottom: '24px' }}>
-                    <label className="dd-form-label">💬 Remarques ou précisions (Optionnel)</label>
-                    <textarea
-                      rows={2}
-                      placeholder="Précisez votre bonus/malus actuel, antécédents ou toute question particulière..."
-                      value={insuranceForm.notes}
-                      onChange={(e) => setInsuranceForm({ ...insuranceForm, notes: e.target.value })}
-                      className="dd-input"
-                      style={{ resize: 'vertical' }}
-                    />
-                  </div>
-
-                  {/* SUBMIT BUTTON */}
-                  <button
-                    type="submit"
-                    disabled={insuranceIsSubmitting}
-                    className="dd-btn dd-btn-primary"
-                    style={{
-                      width: '100%',
-                      padding: '16px 24px',
-                      borderRadius: '100px',
-                      fontSize: '15px',
-                      fontWeight: 900,
-                      justifyContent: 'center',
-                      background: 'linear-gradient(135deg, #0284C7 0%, #0D9488 100%)',
-                      color: '#FFF',
-                      border: 'none',
-                      boxShadow: '0 10px 30px rgba(2, 132, 199, 0.45)',
-                      opacity: insuranceIsSubmitting ? 0.7 : 1,
-                      cursor: insuranceIsSubmitting ? 'wait' : 'pointer'
-                    }}
-                  >
-                    {insuranceIsSubmitting ? (
-                      <span>⏳ Téléversement des pièces & Envoi en cours...</span>
-                    ) : (
-                      <span>🛡️ Recevoir mon devis d'Assurance par Email & WhatsApp →</span>
-                    )}
-                  </button>
-                </form>
-              ) : (
-                <div style={{ textAlign: 'center', padding: '32px 16px' }}>
-                  <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.15)', border: '2px solid #34D399', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', color: '#34D399' }}>
-                    <CheckCircle2 size={36} />
-                  </div>
-                  <h3 style={{ fontSize: '24px', fontWeight: 900, color: '#FFF', marginBottom: '12px' }}>
-                    Votre demande d'assurance VTC a été envoyée !
-                  </h3>
-                  <p style={{ fontSize: '14px', color: '#A7F3D0', maxWidth: '600px', margin: '0 auto 20px', lineHeight: 1.6 }}>
-                    Merci <strong>{insuranceForm.firstName}</strong>. Vos pièces justificatives (Carte Grise, Permis et Relevé d'information) ont été transmises à notre équipe. Nous étudions votre profil et vous envoyons le devis le plus avantageux dans les plus brefs délais.
-                  </p>
-                  <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
-                    <a
-                      href="https://wa.me/33743767400"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="dd-btn dd-btn-whatsapp"
-                      style={{ padding: '12px 24px', borderRadius: '100px', fontSize: '13.5px', fontWeight: 800, background: '#25D366', color: '#FFF', textDecoration: 'none' }}
-                    >
-                      <MessageSquare size={16} /> Ouvrir WhatsApp Direct
-                    </a>
-                    <button
-                      onClick={() => setInsuranceSubmitted(false)}
-                      style={{ padding: '12px 24px', borderRadius: '100px', fontSize: '13.5px', fontWeight: 700, background: 'rgba(255, 255, 255, 0.08)', color: '#FFF', border: '1px solid rgba(255, 255, 255, 0.2)', cursor: 'pointer' }}
-                    >
-                      Nouveau devis
-                    </button>
-                  </div>
-                </div>
-              )}
-
-            </div>
-          </div>
-        </section>
-        )}
-
-        {/* SECTION: SIMULATEUR DÉDIÉ SUR /simulateur */}
-        {currentPath === '/simulateur' && (
-          <section id="simulateur" className="dd-container" style={{ padding: isMobile ? '28px 14px 60px' : '48px 20px 80px' }}>
-            <div style={{ marginBottom: '24px', textAlign: 'left', maxWidth: '1000px', margin: '0 auto 20px' }}>
-              <a href="/" onClick={(e) => navigateTo(e, '/')} style={{ color: '#38BDF8', textDecoration: 'none', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: isMobile ? '13px' : '14px' }}>
-                ← Retour à l'accueil
-              </a>
-            </div>
-            <div className={`dd-simulator-card reveal-zoom ${isSubpage ? 'is-revealed' : ''}`} style={{ padding: isMobile ? '20px 14px' : '32px 28px' }}>
-              <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 800, color: '#38BDF8', textTransform: 'uppercase', letterSpacing: '1.2px' }}>🏔️ Simulateur Nordrive</span>
-                <h2 style={{ fontSize: isMobile ? '22px' : '28px', fontWeight: 900, color: '#FFF', margin: '6px 0', lineHeight: 1.25 }}>Combien Allez-Vous Gagner de Plus ?</h2>
-                <p style={{ fontSize: isMobile ? '12.5px' : '13.5px', color: '#9CA3AF', margin: 0 }}>Comparez vos revenus réels en Flotte Nordrive (50€/sem) par rapport à l'Auto-entrepreneur.</p>
-
-                {/* Sélecteur Semaine / Mois pour le Simulateur */}
-                <div style={{ display: 'inline-flex', width: isMobile ? '100%' : 'auto', maxWidth: isMobile ? '340px' : 'none', background: 'rgba(255, 255, 255, 0.06)', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '100px', padding: '4px', gap: '4px', marginTop: '14px' }}>
-                  <button
-                    type="button"
-                    onClick={() => setSimPeriod('semaine')}
-                    style={{
-                      flex: isMobile ? 1 : 'none',
-                      padding: isMobile ? '7px 10px' : '8px 18px',
-                      borderRadius: '100px',
-                      border: 'none',
-                      background: simPeriod === 'semaine' ? 'linear-gradient(135deg, #0284C7 0%, #0D9488 100%)' : 'transparent',
-                      color: simPeriod === 'semaine' ? '#FFF' : '#94A3B8',
-                      fontSize: isMobile ? '11.5px' : '13px',
-                      fontWeight: 800,
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease',
-                      boxShadow: simPeriod === 'semaine' ? '0 4px 15px rgba(2, 132, 199, 0.4)' : 'none',
-                    }}
-                  >
-                    ⚡ Par Semaine
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setSimPeriod('mois')}
-                    style={{
-                      flex: isMobile ? 1 : 'none',
-                      padding: isMobile ? '7px 10px' : '8px 18px',
-                      borderRadius: '100px',
-                      border: 'none',
-                      background: simPeriod === 'mois' ? 'linear-gradient(135deg, #0284C7 0%, #0D9488 100%)' : 'transparent',
-                      color: simPeriod === 'mois' ? '#FFF' : '#94A3B8',
-                      fontSize: isMobile ? '11.5px' : '13px',
-                      fontWeight: 800,
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease',
-                      boxShadow: simPeriod === 'mois' ? '0 4px 15px rgba(2, 132, 199, 0.4)' : 'none',
-                    }}
-                  >
-                    📅 Par Mois
-                  </button>
-                </div>
-              </div>
-
-              {/* BOUTONS PRÉSÉLECTION RAPIDE */}
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '14px', flexWrap: 'wrap' }}>
-                {simPeriod === 'semaine' ? (
-                  [500, 800, 1200, 1600, 2000].map(val => (
-                    <button
-                      key={val}
-                      type="button"
-                      onClick={() => {
-                        setWeeklyTurnover(val);
-                        setMonthlyTurnover(val * 4);
-                      }}
-                      className={`nord-sim-preset-btn ${weeklyTurnover === val ? 'active' : ''}`}
-                    >
-                      {val.toLocaleString('fr-FR')} € / sem
-                    </button>
-                  ))
-                ) : (
-                  [2000, 3200, 4800, 6400, 8000].map(val => (
-                    <button
-                      key={val}
-                      type="button"
-                      onClick={() => {
-                        setMonthlyTurnover(val);
-                        setWeeklyTurnover(Math.round(val / 4));
-                      }}
-                      className={`nord-sim-preset-btn ${monthlyTurnover === val ? 'active' : ''}`}
-                    >
-                      {val.toLocaleString('fr-FR')} € / mois
-                    </button>
-                  ))
-                )}
-              </div>
-
-              {simPeriod === 'semaine' ? (
-                <div className="dd-slider-box" style={{ padding: isMobile ? '14px 12px' : '20px' }}>
-                  <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'flex-start' : 'center', gap: isMobile ? '4px' : '0', marginBottom: '8px' }}>
-                    <span style={{ fontSize: isMobile ? '12px' : '13px', color: '#E5E7EB', fontWeight: 600 }}>Chiffre d'Affaires Semaine (Uber + Bolt) :</span>
-                    <span style={{ fontSize: isMobile ? '20px' : '24px', fontWeight: 900, color: '#38BDF8', fontFamily: 'monospace' }}>{weeklyTurnover.toLocaleString('fr-FR')} € / sem</span>
-                  </div>
-
-                  <input
-                    type="range"
-                    min="300"
-                    max="2500"
-                    step="50"
-                    value={weeklyTurnover}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value);
-                      setWeeklyTurnover(val);
-                      setMonthlyTurnover(val * 4);
-                    }}
-                    className="dd-range-input"
-                  />
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', color: '#6B7280', fontFamily: 'monospace', marginTop: '4px' }}>
-                    <span>300 €</span>
-                    <span>800 €</span>
-                    <span>1 200 €</span>
-                    <span>1 800 €</span>
-                    <span>2 500 €</span>
-                  </div>
-                </div>
-              ) : (
-                <div className="dd-slider-box" style={{ padding: isMobile ? '14px 12px' : '20px' }}>
-                  <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'flex-start' : 'center', gap: isMobile ? '4px' : '0', marginBottom: '8px' }}>
-                    <span style={{ fontSize: isMobile ? '12px' : '13px', color: '#E5E7EB', fontWeight: 600 }}>Chiffre d'Affaires Mois (Uber + Bolt) :</span>
-                    <span style={{ fontSize: isMobile ? '20px' : '24px', fontWeight: 900, color: '#38BDF8', fontFamily: 'monospace' }}>{monthlyTurnover.toLocaleString('fr-FR')} € / mois</span>
-                  </div>
-
-                  <input
-                    type="range"
-                    min="1200"
-                    max="10000"
-                    step="200"
-                    value={monthlyTurnover}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value);
-                      setMonthlyTurnover(val);
-                      setWeeklyTurnover(Math.round(val / 4));
-                    }}
-                    className="dd-range-input"
-                  />
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', color: '#6B7280', fontFamily: 'monospace', marginTop: '4px' }}>
-                    <span>1 200 €</span>
-                    <span>3 000 €</span>
-                    <span>5 000 €</span>
-                    <span>7 500 €</span>
-                    <span>10 000 €</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Results Comparison Grid */}
-              <div className="dd-sim-grid" style={{ gap: isMobile ? '12px' : '20px', marginTop: isMobile ? '14px' : '24px' }}>
-                <div className="dd-sim-box-red" style={{ padding: isMobile ? '16px 12px' : '22px 20px' }}>
-                  <span style={{ fontSize: '10.5px', fontWeight: 800, textTransform: 'uppercase', color: '#FCA5A5' }}>Statut Auto-Entrepreneur</span>
-                  <div className="dd-sim-val" style={{ color: '#EF4444', fontSize: isMobile ? '24px' : '32px' }}>
-                    {simPeriod === 'semaine' ? `${autoNetWeek.toLocaleString('fr-FR')} €` : `${autoNetMonth.toLocaleString('fr-FR')} €`}
-                  </div>
-                  <p style={{ fontSize: '10.5px', color: '#9CA3AF', margin: '4px 0 0' }}>Après URSSAF (~25%) & charges non déductibles.</p>
-                </div>
-
-                <div className="dd-sim-box-green" style={{ padding: isMobile ? '16px 12px' : '22px 20px' }}>
-                  <span style={{ position: 'absolute', top: '-11px', left: '50%', transform: 'translateX(-50%)', background: '#38BDF8', color: '#000', fontSize: '9.5px', fontWeight: 900, padding: '2px 10px', borderRadius: '9999px', textTransform: 'uppercase' }}>❄️ Flotte Nordrive</span>
-                  <span style={{ fontSize: '10.5px', fontWeight: 800, textTransform: 'uppercase', color: '#6EE7B7' }}>Net dans votre poche</span>
-                  <div className="dd-sim-val" style={{ color: '#10B981', fontSize: isMobile ? '24px' : '32px' }}>
-                    {simPeriod === 'semaine' ? `${fleetNetWeek.toLocaleString('fr-FR')} €` : `${fleetNetMonth.toLocaleString('fr-FR')} €`}
-                  </div>
-                  <p style={{ fontSize: '10.5px', color: '#A7F3D0', fontWeight: 600, margin: '4px 0 0' }}>
-                    {simPeriod === 'semaine' ? 'Forfait 50€/sem • CDI • Viré chaque lundi' : 'Forfait 200€/mois • CDI • Viré chaque lundi'}
-                  </p>
-                </div>
-              </div>
-
-              <div style={{ textAlign: 'center', background: 'rgba(56, 189, 248, 0.12)', border: '1px solid rgba(56, 189, 248, 0.35)', padding: isMobile ? '12px 10px' : '14px', borderRadius: '12px', fontSize: isMobile ? '13px' : '14.5px', color: '#E0F2FE', marginTop: isMobile ? '14px' : '20px' }}>
-                ⚡ En choisissant Nordrive, vous gagnez :{' '}
-                <strong style={{ color: '#34D399', fontFamily: 'monospace', fontSize: isMobile ? '15px' : '17px' }}>
-                  {simPeriod === 'semaine'
-                    ? `+${gainExtraWeek.toLocaleString('fr-FR')} € / sem (+${(gainExtraWeek * 4).toLocaleString('fr-FR')} € / mois)`
-                    : `+${gainExtraMonth.toLocaleString('fr-FR')} € / mois (+${Math.round(gainExtraMonth / 4).toLocaleString('fr-FR')} € / sem)`}
-                </strong>{' '}
-                de plus dans votre poche !
-              </div>
-
-            </div>
-          </section>
-        )}
+        {currentPath === '/simulateur' && <SimulatorPage onNavigate={navigateTo} />}
 
         {currentPath === '/parrainage' && (
-          <section id="parrainage" className="dd-container" style={{ padding: isMobile ? '28px 16px 70px' : '40px 20px 80px', maxWidth: '940px' }}>
-            <div style={{ marginBottom: '22px', textAlign: 'left' }}>
-              <a href="/" onClick={(e) => navigateTo(e, '/')} style={{ color: '#38BDF8', textDecoration: 'none', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}>
-                ← Retour à l'accueil
-              </a>
-            </div>
-
-            {/* EN-TÊTE : promesse claire en une phrase */}
-            <div style={{ textAlign: 'center', maxWidth: '640px', margin: '0 auto 30px' }}>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(229, 193, 88, 0.12)', border: '1px solid rgba(229, 193, 88, 0.4)', color: '#FFE29F', fontSize: '11px', fontWeight: 800, padding: '5px 14px', borderRadius: '9999px', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '14px' }}>
-                <Gift size={14} /> Programme parrainage
-              </div>
-              <h1 style={{ fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif", fontSize: isMobile ? '28px' : '40px', fontWeight: 900, color: '#FFF', lineHeight: 1.15, letterSpacing: '-0.5px', margin: '0 0 12px' }}>
-                Parrainez un confrère,<br />
-                <span className="flyer-gold-text">touchez jusqu'à 200 €</span>
-              </h1>
-              <p style={{ fontSize: isMobile ? '14px' : '16px', color: '#CBD5E1', lineHeight: 1.6, margin: 0 }}>
-                Chaque chauffeur que vous recommandez et qui rejoint la flotte vous rapporte une prime, versée dès que sa première semaine de courses est validée.
-              </p>
-            </div>
-
-            {/* 3 ÉTAPES */}
-            <ol style={{ listStyle: 'none', padding: 0, margin: '0 0 32px', display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: '14px' }}>
-              {[
-                { n: '1', title: 'Vous parrainez', text: "Envoyez l'invitation sur WhatsApp ou indiquez-nous son numéro." },
-                { n: '2', title: 'Il rejoint la flotte', text: 'Nous le rattachons en 1h : macaron, contrat, comptes plateformes.' },
-                { n: '3', title: 'Vous touchez la prime', text: "Jusqu'à 200 € dès sa 1ère semaine de courses validée." },
-              ].map(step => (
-                <li key={step.n} style={{ display: 'flex', gap: '14px', alignItems: 'flex-start', background: 'rgba(255, 255, 255, 0.04)', border: '1px solid rgba(255, 255, 255, 0.09)', borderRadius: '16px', padding: '16px' }}>
-                  <span style={{ flexShrink: 0, width: '32px', height: '32px', borderRadius: '50%', background: 'linear-gradient(135deg, #FBE5A9 0%, #E5C158 50%, #B88514 100%)', color: '#1A1205', fontWeight: 900, fontSize: '15px', display: 'grid', placeItems: 'center' }}>{step.n}</span>
-                  <div style={{ textAlign: 'left' }}>
-                    <div style={{ fontSize: '15px', fontWeight: 800, color: '#FFF', marginBottom: '3px' }}>{step.title}</div>
-                    <div style={{ fontSize: '13px', color: '#94A3B8', lineHeight: 1.5 }}>{step.text}</div>
-                  </div>
-                </li>
-              ))}
-            </ol>
-
-            {/* ACTION : partage rapide + formulaire à 4 champs */}
-            <div style={{ maxWidth: '560px', margin: '0 auto' }}>
-              {!referralSubmitted ? (
-                <div style={{ background: 'linear-gradient(180deg, rgba(18, 28, 40, 0.95) 0%, rgba(11, 17, 25, 0.98) 100%)', border: '1px solid rgba(229, 193, 88, 0.3)', borderRadius: '20px', padding: isMobile ? '20px 16px' : '28px', boxShadow: '0 16px 45px rgba(0,0,0,0.6)' }}>
-                  <a
-                    href={`https://wa.me/?text=${encodeURIComponent("Salut ! Je te recommande Nordrive pour ton rattachement VTC : 50€/semaine uniquement si tu roules (0€ en vacances), véhicules +12 ans acceptés et macaron en moins d'1h. Inscris-toi ici : https://nordrive-flotte.com/")}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="dd-btn dd-btn-whatsapp"
-                    style={{ width: '100%', borderRadius: '14px', padding: '15px', fontSize: '15px', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', textDecoration: 'none' }}
-                  >
-                    <MessageSquare size={18} />
-                    <span>Envoyer l'invitation sur WhatsApp</span>
-                  </a>
-
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', margin: '20px 0 16px', color: '#64748B', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px' }}>
-                    <span style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.1)' }} />
-                    <span>puis enregistrez votre prime</span>
-                    <span style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.1)' }} />
-                  </div>
-
-                  <form onSubmit={handleReferralSubmit} style={{ display: 'grid', gap: '14px' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '12px' }}>
-                      <div className="dd-form-group" style={{ marginBottom: 0 }}>
-                        <label className="dd-form-label" htmlFor="ref-referrer-name">Votre nom *</label>
-                        <input
-                          id="ref-referrer-name"
-                          type="text"
-                          required
-                          autoComplete="name"
-                          placeholder="Jean Dupont"
-                          value={referralForm.referrerName}
-                          onChange={(e) => setReferralForm({ ...referralForm, referrerName: e.target.value })}
-                          className="dd-input"
-                        />
-                      </div>
-                      <div className="dd-form-group" style={{ marginBottom: 0 }}>
-                        <label className="dd-form-label" htmlFor="ref-referrer-phone">Votre téléphone *</label>
-                        <input
-                          id="ref-referrer-phone"
-                          type="tel"
-                          inputMode="tel"
-                          required
-                          autoComplete="tel"
-                          pattern={FR_PHONE_PATTERN}
-                          title="Numéro français, par exemple 06 12 34 56 78"
-                          placeholder="06 12 34 56 78"
-                          value={referralForm.referrerPhone}
-                          onChange={(e) => setReferralForm({ ...referralForm, referrerPhone: e.target.value })}
-                          className="dd-input"
-                        />
-                      </div>
-                      <div className="dd-form-group" style={{ marginBottom: 0 }}>
-                        <label className="dd-form-label" htmlFor="ref-friend-name">Nom de votre ami *</label>
-                        <input
-                          id="ref-friend-name"
-                          type="text"
-                          required
-                          placeholder="Marie Martin"
-                          value={referralForm.friendName}
-                          onChange={(e) => setReferralForm({ ...referralForm, friendName: e.target.value })}
-                          className="dd-input"
-                        />
-                      </div>
-                      <div className="dd-form-group" style={{ marginBottom: 0 }}>
-                        <label className="dd-form-label" htmlFor="ref-friend-phone">Son téléphone *</label>
-                        <input
-                          id="ref-friend-phone"
-                          type="tel"
-                          inputMode="tel"
-                          required
-                          pattern={FR_PHONE_PATTERN}
-                          title="Numéro français, par exemple 07 12 34 56 78"
-                          placeholder="07 12 34 56 78"
-                          value={referralForm.friendPhone}
-                          onChange={(e) => setReferralForm({ ...referralForm, friendPhone: e.target.value })}
-                          className="dd-input"
-                        />
-                      </div>
-                    </div>
-
-                    {referralError && (
-                      <div role="alert" style={{ background: 'rgba(239, 68, 68, 0.12)', border: '1px solid rgba(239, 68, 68, 0.4)', color: '#FCA5A5', borderRadius: '10px', padding: '10px 12px', fontSize: '13px', lineHeight: 1.4 }}>
-                        {referralError}
-                      </div>
-                    )}
-
-                    <button type="submit" className="dd-btn dd-btn-gold" style={{ width: '100%', padding: '15px', borderRadius: '14px', fontSize: '15px', fontWeight: 800 }}>
-                      <span>Enregistrer mon parrainage →</span>
-                    </button>
-                    <p style={{ margin: 0, fontSize: '12px', color: '#64748B', textAlign: 'center', lineHeight: 1.5 }}>
-                      Nous contactons votre ami pour son rattachement. Votre prime est versée sur le numéro indiqué ci-dessus.
-                    </p>
-                  </form>
-                </div>
-              ) : (
-                <div style={{ textAlign: 'center', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.35)', padding: '32px 24px', borderRadius: '20px', boxShadow: '0 8px 30px rgba(0,0,0,0.5)' }}>
-                  <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: 'rgba(52, 211, 153, 0.18)', border: '2px solid #34D399', display: 'grid', placeItems: 'center', margin: '0 auto 14px' }}>
-                    <CheckCircle2 size={28} color="#34D399" />
-                  </div>
-                  <h2 style={{ color: '#34D399', fontSize: '22px', fontWeight: 900, margin: '0 0 10px' }}>Parrainage enregistré</h2>
-                  <p style={{ fontSize: '14px', color: '#A7F3D0', lineHeight: 1.6, margin: '0 0 6px' }}>
-                    La demande pour <strong style={{ color: '#FFF' }}>{referralForm.friendName}</strong> a bien été transmise à notre équipe.
-                  </p>
-                  <p style={{ fontSize: '13px', color: '#94A3B8', lineHeight: 1.6, margin: '0 0 20px' }}>
-                    Dès que son rattachement est validé et sa première semaine de courses effectuée, votre prime (jusqu'à 200 €) vous est versée.
-                  </p>
-                  <button
-                    type="button"
-                    className="dd-btn dd-btn-gold"
-                    onClick={() => {
-                      setReferralForm(prev => ({ ...prev, friendName: '', friendPhone: '' }));
-                      setReferralSubmitted(false);
-                    }}
-                    style={{ width: '100%', padding: '14px', borderRadius: '14px', fontSize: '14px', fontWeight: 800 }}
-                  >
-                    <span>Parrainer un autre ami</span>
-                  </button>
-                </div>
-              )}
-            </div>
-          </section>
+          <ParrainagePage
+            form={referralForm}
+            setForm={setReferralForm}
+            submitted={referralSubmitted}
+            setSubmitted={setReferralSubmitted}
+            error={referralError}
+            onSubmit={handleReferralSubmit}
+            phonePattern={FR_PHONE_PATTERN}
+            onNavigate={navigateTo}
+          />
         )}
 
-        {currentPath === '/qui-sommes-nous' && (
-          <>
-            <section id="qui-sommes-nous" className="dd-container" style={{ padding: isMobile ? '28px 20px 60px' : '48px 20px 60px' }}>
-              <div style={{ marginBottom: '30px', textAlign: 'left', maxWidth: '850px', margin: '0 auto 20px' }}>
-                <a href="/" onClick={(e) => navigateTo(e, '/')} style={{ color: '#38BDF8', textDecoration: 'none', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                  ← Retour à l'accueil
-                </a>
-              </div>
-              <div style={{ maxWidth: '850px', margin: '0 auto', textAlign: 'center' }}>
-                <div className={`reveal-on-scroll ${isSubpage ? 'is-revealed' : ''}`}>
-                  <span style={{ fontSize: '12px', fontWeight: 800, color: '#7DD3FC', textTransform: 'uppercase', letterSpacing: '1px' }}>🏔️ Voir au Sommet</span>
-                  <h2 style={{ fontSize: '32px', fontWeight: 900, color: '#FFF', margin: '8px 0 16px' }}>Qui sommes-nous ?</h2>
-                  <p style={{ fontSize: '15px', color: '#D1D5DB', lineHeight: '1.8', marginBottom: '24px' }}>
-                    <strong>Nordrive</strong> est née d'une ambition forte : offrir aux chauffeurs VTC la solidité, la sérénité et la transparence à la hauteur des plus grands sommets. Nous plaçons la sécurité sociale et la réactivité au cœur de notre flotte.
-                  </p>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', textAlign: 'left' }}>
-                  <div className={`dd-card reveal-left reveal-delay-1 ${isSubpage ? 'is-revealed' : ''}`}>
-                    <Users size={24} style={{ color: '#38BDF8', marginBottom: '8px' }} />
-                    <h4 style={{ fontSize: '16px', fontWeight: 800, color: '#FFF', marginBottom: '4px' }}>Proximité & Support Dédié</h4>
-                    <p style={{ fontSize: '12.5px', color: '#9CA3AF' }}>Une équipe disponible sur WhatsApp 7j/7 pour vous assister à tout moment dans vos démarches et l'accès aux plateformes.</p>
-                  </div>
+        {currentPath === '/qui-sommes-nous' && <AboutPage onNavigate={navigateTo} />}
 
-                  <div className={`dd-card reveal-right reveal-delay-2 ${isSubpage ? 'is-revealed' : ''}`}>
-                    <Award size={24} style={{ color: '#10B981', marginBottom: '8px' }} />
-                    <h4 style={{ fontSize: '16px', fontWeight: 800, color: '#FFF', marginBottom: '4px' }}>Conformité & Sécurité Maximum</h4>
-                    <p style={{ fontSize: '12.5px', color: '#9CA3AF' }}>Rattachement agréé par le ministère des Transports, macaron provisoire délivré en 1h et contrat CDI officiel.</p>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <section id="support-humain" className="nord-founder-section dd-container">
-              <div className="nord-founder-card reveal-zoom">
-                <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '30px', alignItems: 'center' }}>
-                  
-                  <div className="nord-founder-avatars" style={{ flexShrink: 0 }}>
-                    <div className="nord-founder-avatar">A</div>
-                    <div className="nord-founder-avatar" style={{ marginLeft: '-24px', background: 'linear-gradient(135deg, #10B981 0%, #38BDF8 100%)' }}>R</div>
-                  </div>
-
-                  <div style={{ flexGrow: 1, textAlign: isMobile ? 'center' : 'left' }}>
-                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(139, 92, 246, 0.15)', border: '1px solid rgba(139, 92, 246, 0.35)', color: '#C4B5FD', fontSize: '11px', fontWeight: 800, padding: '4px 12px', borderRadius: '9999px', textTransform: 'uppercase', marginBottom: '12px' }}>
-                      👥 Vos interlocuteurs directs
-                    </div>
-                    <h3 style={{ fontSize: '24px', fontWeight: 900, color: '#FFF', marginBottom: '10px' }}>Un accompagnement humain avec l'équipe Nordrive</h3>
-                    <p style={{ fontSize: '14.5px', color: '#D1D5DB', lineHeight: '1.7', marginBottom: '16px' }}>
-                      "Nous avons fondé <strong>Nordrive</strong> avec une idée simple : en finir avec les intermédiaires anonymes et les flottes fantômes. Quand vous rejoignez Nordrive, vous travaillez directement avec nous. Nous gérons votre dossier de A à Z, nous vous conseillons sur l'optimisation de vos revenus et nous répondons à toutes vos questions sous 10 minutes sur WhatsApp."
-                    </p>
-                    <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', justifyContent: isMobile ? 'center' : 'flex-start' }}>
-                      <a href="https://wa.me/33743767400?text=Bonjour%20l%27%C3%A9quipe%20Nordrive%2C%20je%20souhaite%20des%20infos" target="_blank" rel="noopener noreferrer" className="dd-btn dd-btn-whatsapp" style={{ padding: '10px 20px', borderRadius: '100px', fontSize: '13px', fontWeight: 700 }}>
-                        <MessageSquare size={16} />
-                        <span>Discuter en direct avec nous</span>
-                      </a>
-                    </div>
-                  </div>
-
-                </div>
-              </div>
-            </section>
-          </>
-        )}
-
-        {currentPath === '/faq' && (
-          <section id="faq" className="dd-container" style={{ maxWidth: '800px', padding: isMobile ? '28px 20px 50px' : '48px 20px 50px' }}>
-            <div style={{ marginBottom: '30px', textAlign: 'left' }}>
-              <a href="/" onClick={(e) => navigateTo(e, '/')} style={{ color: '#38BDF8', textDecoration: 'none', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                ← Retour à l'accueil
-              </a>
-            </div>
-            <div className={`reveal-on-scroll ${isSubpage ? 'is-revealed' : ''}`} style={{ textAlign: 'center', marginBottom: '28px' }}>
-              <span style={{ fontSize: '12px', fontWeight: 800, color: '#7DD3FC', textTransform: 'uppercase', letterSpacing: '1px' }}>❄️ Votre Sérénité</span>
-              <h2 style={{ fontSize: '28px', fontWeight: 900, color: '#FFF' }}>FAQ complète Nordrive</h2>
-            </div>
-
-            {faqList.map((item, idx) => (
-              <div key={idx} className={`nord-accordion-item reveal-on-scroll reveal-delay-${(idx % 3) + 1} ${isSubpage ? 'is-revealed' : ''}`}>
-                <button onClick={() => setOpenFaq(openFaq === idx ? null : idx)} className="nord-accordion-btn">
-                  <span>{item.q}</span>
-                  <span className={`nord-accordion-plus ${openFaq === idx ? 'open' : ''}`}>+</span>
-                </button>
-                {openFaq === idx && (
-                  <div style={{ padding: '0 24px 20px', color: '#94A3B8', fontSize: '13.5px', lineHeight: '1.6', borderTop: '1px solid rgba(255, 255, 255, 0.05)', paddingTop: '16px' }}>
-                    {item.a}
-                  </div>
-                )}
-              </div>
-            ))}
-          </section>
-        )}
+        {currentPath === '/faq' && <FaqPage faq={faqList} onNavigate={navigateTo} />}
 
         {currentPath === '/contact' && (
-          <section id="contact" className="dd-container" style={{ padding: isMobile ? '28px 20px 70px' : '48px 20px 80px' }}>
-            <div style={{ marginBottom: '30px', textAlign: 'left', maxWidth: '900px', margin: '0 auto 20px' }}>
-              <a href="/" onClick={(e) => navigateTo(e, '/')} style={{ color: '#38BDF8', textDecoration: 'none', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                ← Retour à l'accueil
-              </a>
-            </div>
-            <div style={{ maxWidth: '900px', margin: '0 auto' }}>
-              <div className={`reveal-on-scroll ${isSubpage ? 'is-revealed' : ''}`} style={{ textAlign: 'center', marginBottom: '32px' }}>
-                <span style={{ fontSize: '12px', fontWeight: 800, color: '#F59E0B', textTransform: 'uppercase', letterSpacing: '1px' }}>Support & Contact</span>
-                <h2 style={{ fontSize: '32px', fontWeight: 900, color: '#FFF', margin: '6px 0' }}>Une question ? Contactez l'équipe Nordrive</h2>
-                <p style={{ fontSize: '13.5px', color: '#9CA3AF' }}>Nos conseillers vous répondent sous 2 heures ouvrées.</p>
-              </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
-              
-              {/* Direct Info Box */}
-              <div className={`dd-card reveal-left reveal-delay-1 ${isSubpage ? 'is-revealed' : ''}`} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                <div>
-                  <h4 style={{ fontSize: '16px', fontWeight: 800, color: '#FFF', marginBottom: '12px' }}>Nos Coordonnées</h4>
-                  <a href="tel:0743767400" style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: '#D1D5DB', marginBottom: '10px', textDecoration: 'none' }}>
-                    <Phone size={16} style={{ color: '#10B981' }} />
-                    <span>07 43 76 74 00 (7j/7)</span>
-                  </a>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: '#D1D5DB', marginBottom: '10px' }}>
-                    <Mail size={16} style={{ color: '#8B5CF6' }} />
-                    <span>nordrivevtc@gmail.com</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: '#D1D5DB' }}>
-                    <MapPin size={16} style={{ color: '#F59E0B' }} />
-                    <span>Paris & Île-de-France</span>
-                  </div>
-                </div>
-
-                <a
-                  href="https://wa.me/33743767400?text=Bonjour%20Nordrive%2C%20j%27ai%20une%20question"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="dd-btn dd-btn-whatsapp"
-                  style={{ width: '100%', marginTop: 'auto' }}
-                >
-                  <MessageSquare size={16} />
-                  <span>Démarrer un chat WhatsApp</span>
-                </a>
-              </div>
-
-              {/* Direct Message Form */}
-              <div className={`dd-card reveal-right reveal-delay-2 ${isSubpage ? 'is-revealed' : ''}`}>
-                {!contactSubmitted ? (
-                  <form onSubmit={handleContactSubmit}>
-                    <h4 style={{ fontSize: '16px', fontWeight: 800, color: '#FFF', marginBottom: '12px' }}>Envoyer un message</h4>
-                    
-                    <div className="dd-form-group">
-                      <label className="dd-form-label">Nom complet</label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="Jean Dupont"
-                        value={contactForm.name}
-                        onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })}
-                        className="dd-input"
-                      />
-                    </div>
-
-                    <div className="dd-form-group">
-                      <label className="dd-form-label">Téléphone</label>
-                      <input
-                        type="tel"
-                        required
-                        placeholder="06 12 34 56 79"
-                        value={contactForm.phone}
-                        onChange={(e) => setContactForm({ ...contactForm, phone: e.target.value })}
-                        className="dd-input"
-                      />
-                    </div>
-
-                    <div className="dd-form-group">
-                      <label className="dd-form-label">Message</label>
-                      <textarea
-                        rows={3}
-                        required
-                        placeholder="Bonjour, je souhaiterais des précisions sur..."
-                        value={contactForm.message}
-                        onChange={(e) => setContactForm({ ...contactForm, message: e.target.value })}
-                        className="dd-input"
-                        style={{ resize: 'none' }}
-                      ></textarea>
-                    </div>
-
-                    <button type="submit" className="dd-btn dd-btn-primary" style={{ width: '100%' }}>
-                      <Send size={15} />
-                      <span>Envoyer mon message</span>
-                    </button>
-                  </form>
-                ) : (
-                  <div style={{ textAlign: 'center', padding: '20px 0' }}>
-                    <div style={{ color: '#10B981', fontSize: '20px', fontWeight: 800, marginBottom: '8px' }}>✓ Message Envoyé !</div>
-                    <p style={{ fontSize: '13px', color: '#9CA3AF' }}>Merci. Un conseiller Nordrive vous recontacte rapidement.</p>
-                  </div>
-                )}
-              </div>
-
-            </div>
-          </div>
-        </section>
+          <ContactPage
+            form={contactForm}
+            setForm={setContactForm}
+            submitted={contactSubmitted}
+            onSubmit={handleContactSubmit}
+            phonePattern={FR_PHONE_PATTERN}
+            onNavigate={navigateTo}
+          />
         )}
 
         {/* SECTION: VILLES COUVERTES (Interactive flex-pills tag list) */}

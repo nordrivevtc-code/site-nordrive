@@ -82,6 +82,14 @@ export interface Driver {
   nextFollowUpDate?: string;         // Date de relance prévue
   rgpdConsent?: boolean;             // Consentement RGPD coché dans le formulaire
   rgpdConsentDate?: string;          // Date du consentement
+  // Rattachement aux plateformes (suivi manuel, validé par Nordrive)
+  platformEnrollment?: {
+    uber?: { sentAt: string };                // invitation créée dans Uber Fleet
+    bolt?: { sentAt: string; link?: string }; // lien généré par Bolt Fleet, envoyé au chauffeur
+  };
+  // Provenance (statistiques) : d'où le chauffeur est arrivé sur le site
+  source?: string;                   // « Google », « ChatGPT », « WhatsApp », « Direct »...
+  sourceDetail?: string;             // utm_medium / campagne ou domaine référent
 }
 
 // ===========================

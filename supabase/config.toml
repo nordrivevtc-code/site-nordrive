@@ -1,0 +1,19 @@
+# Configuration Supabase (extrait). Complétée par `supabase init` si besoin.
+project_id = "nordrive"
+
+# Fonctions PUBLIQUES (appelées par le site sans compte) : protégées par origine autorisée, anti-robot (Turnstile),
+# limitation de débit et validation stricte (voir functions/_shared). La clé de service n'est jamais exposée.
+[functions.submit-application]
+verify_jwt = false
+[functions.submit-contact]
+verify_jwt = false
+[functions.submit-referral]
+verify_jwt = false
+[functions.submit-insurance]
+verify_jwt = false
+[functions.request-upload-url]
+verify_jwt = false
+
+# Fonction ADMIN : exige un JWT d'utilisateur valide ; le rôle et la double authentification sont revérifiés par la base.
+[functions.document-url]
+verify_jwt = true

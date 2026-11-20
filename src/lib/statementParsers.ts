@@ -58,8 +58,11 @@ export interface QontoExportResult {
   totalTransfersCount: number;
 }
 
+// Les tarifs par chauffeur ne sont plus écrits dans le code : ils viennent de la base (drivers.fixed_weekly_fee).
+// Table vide volontairement ; getDriverFee() retombe alors sur le tarif par défaut des réglages.
 export const DRIVER_FEE_GRID: Record<string, number> = {};
 
+// Variantes de noms : plus aucun nom de chauffeur dans le code (à gérer côté base si besoin).
 export const CANONICAL_ALIASES: Record<string, string> = {};
 
 export const round2 = (num: number): number => Math.round((num + Number.EPSILON) * 100) / 100;

@@ -8,8 +8,7 @@ import {
   CreditCard, Check
 } from 'lucide-react';
 import type { Driver, DriverStatus, Activity as ActivityType, ActivityType as AType } from '../types/fleet';
-import { logoutAdmin } from './AdminLogin';
-import { FleetDashboard } from './FleetDashboard';
+import { FleetEnrollment, toWhatsAppNumber } from './FleetEnrollment';
 import { clearNordriveStorage } from '../hooks/useLocalStorage';
 import { cleanIban, formatIbanDisplay } from '../lib/statementParsers';
 
@@ -229,7 +228,7 @@ const DriverPanel: React.FC<{
           <a href={`tel:${driver.phone}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '7px 12px', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', color: '#10B981', fontSize: '12px', fontWeight: 600, textDecoration: 'none' }}>
             <Phone size={13} /> Appeler
           </a>
-          <a href={`https://wa.me/${driver.phone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '7px 12px', background: 'rgba(37,211,102,0.12)', border: '1px solid rgba(37,211,102,0.3)', borderRadius: '8px', color: '#25D366', fontSize: '12px', fontWeight: 600, textDecoration: 'none' }}>
+          <a href={`https://wa.me/${toWhatsAppNumber(driver.phone)}`} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '7px 12px', background: 'rgba(37,211,102,0.12)', border: '1px solid rgba(37,211,102,0.3)', borderRadius: '8px', color: '#25D366', fontSize: '12px', fontWeight: 600, textDecoration: 'none' }}>
             <MessageSquare size={13} /> WhatsApp
           </a>
           <a href={`mailto:${driver.email}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '7px 12px', background: 'rgba(167,139,250,0.12)', border: '1px solid rgba(167,139,250,0.3)', borderRadius: '8px', color: '#A78BFA', fontSize: '12px', fontWeight: 600, textDecoration: 'none' }}>
@@ -243,6 +242,14 @@ const DriverPanel: React.FC<{
 
       {/* Scrollable body */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+
+        {/* Rattachement Uber & Bolt : tout ce qu'il faut copier/envoyer, au même endroit */}
+        <FleetEnrollment
+          key={driver.id}
+          driver={driver}
+          onUpdate={onUpdate}
+          onAddActivity={(act) => onAddActivity(act as never)}
+        />
 
         {/* Change statut */}
         <div style={{ marginBottom: '20px' }}>
@@ -861,11 +868,9 @@ export const DriverCRM: React.FC<DriverCRMProps> = ({
             👥 Pipeline & Dossiers Chauffeurs ({drivers.length})
           </button>
         </div>
-        <FleetDashboard
-          drivers={drivers}
-          onNavigateSubTab={() => setCrmView('pipeline')}
-          onOpenPublicSite={() => { window.location.href = '/'; }}
-        />
+        <p style={{ color: '#94A3B8', fontSize: '14px', padding: '24px' }}>
+          Le tableau de bord ERP (véhicules, amendes, contrats) est en cours de reconstruction avec la nouvelle administration sécurisée.
+        </p>
       </div>
     );
   }
@@ -928,7 +933,7 @@ export const DriverCRM: React.FC<DriverCRMProps> = ({
           >
             <RotateCcw size={13} /> Nettoyer données test
           </button>
-          <button onClick={() => { logoutAdmin(); window.location.reload(); }} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#64748B', fontSize: '12px', cursor: 'pointer' }}>
+          <button onClick={() => { window.location.href = '/'; }} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#64748B', fontSize: '12px', cursor: 'pointer' }}>
             <LogOut size={14} /> Déconnexion
           </button>
         </div>
@@ -946,7 +951,7 @@ export const DriverCRM: React.FC<DriverCRMProps> = ({
             <form onSubmit={handleAddDriver}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
                 {[
-                  { label: 'Prénom *', key: 'firstName', placeholder: 'Mohamed' },
+                  { label: 'Prénom *', key: 'firstName', placeholder: 'Claire' },
                   { label: 'Nom *', key: 'lastName', placeholder: 'Dupont' },
                   { label: 'Téléphone *', key: 'phone', placeholder: '+33 6 12 34 56 78' },
                   { label: 'Email', key: 'email', placeholder: 'email@exemple.com' },

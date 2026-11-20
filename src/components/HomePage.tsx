@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ArrowRight, CalendarCheck, Car, MessageSquare, Wallet } from 'lucide-react';
+import { trackOnce } from '../lib/analytics';
 import './home.css';
 
 interface HomePageProps {
@@ -22,10 +23,29 @@ export const HomePage: React.FC<HomePageProps> = ({ form, faq, onNavigate, onScr
   const fee = weeklyTurnover > 0 ? WEEKLY_FEE : 0;
   const net = Math.max(0, weeklyTurnover - fee);
 
+  // Mesure : le formulaire a-t-il été vu par le visiteur ? (une seule fois par visite)
+  const formSection = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const el = formSection.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          trackOnce('form-view', 'Formulaire vu');
+          observer.disconnect();
+        }
+      },
+      // 10 % suffisent : la section est très haute, 25 % ne seraient jamais visibles sur un petit écran
+      { threshold: 0.1 },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <div className="nh">
       {/* ───────── 1. HERO (sombre) : une promesse, une action ───────── */}
-      <section className="nh-hero" aria-labelledby="nh-title">
+      <section className="nh-hero" data-zone="hero" aria-labelledby="nh-title">
         <div className="nh-wrap">
           <span className="nh-pill"><span className="nh-dot" aria-hidden="true" /> Flotte VTC agréée</span>
           <h1 id="nh-title" className="nh-h1">
@@ -105,7 +125,10 @@ export const HomePage: React.FC<HomePageProps> = ({ form, faq, onNavigate, onScr
                 max={2500}
                 step={50}
                 value={weeklyTurnover}
-                onChange={(e) => setWeeklyTurnover(Number(e.target.value))}
+                onChange={(e) => {
+                  setWeeklyTurnover(Number(e.target.value));
+                  trackOnce('simulator', 'Simulateur utilisé');
+                }}
               />
               <div className="nh-range-scale" aria-hidden="true"><span>0 €</span><span>2 500 €</span></div>
 
@@ -121,7 +144,7 @@ export const HomePage: React.FC<HomePageProps> = ({ form, faq, onNavigate, onScr
       </section>
 
       {/* ───────── 3. FORMULAIRE (sombre) : étapes + dossier ───────── */}
-      <section id="formulaire" className="nh-section" aria-labelledby="nh-join">
+      <section id="formulaire" ref={formSection} className="nh-section" aria-labelledby="nh-join">
         <div className="nh-wrap nh-form-grid">
           <div className="nh-sticky">
             <span className="nh-eyebrow">Rejoindre la flotte</span>

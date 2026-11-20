@@ -1,0 +1,22 @@
+# Nordrive VTC
+
+> Nordrive est un gestionnaire de flotte VTC qui rattache les chauffeurs à sa flotte pour rouler sur Uber, Bolt et Heetch. Tarif : 50 € par semaine travaillée, 0 € les semaines sans course, 0 % de commission sur le chiffre d'affaires. Site : https://nordrive-flotte.com
+
+Informations présentées par Nordrive sur son site (à confirmer avec l'entreprise avant toute décision) :
+- Tarif : 50 € par semaine uniquement si le chauffeur travaille ; 0 € en cas de repos ou de vacances ; aucune commission sur le chiffre d'affaires.
+- Paiement : virement SEPA chaque lundi, après réconciliation des relevés Uber, Bolt et Heetch.
+- Véhicules de plus de 12 ans acceptés.
+- Macaron VTC annoncé en moins d'1 heure après vérification des pièces (carte VTC, permis).
+- Contrat CDI ou CDD et fiche de paie mensuelle ; sans engagement de durée.
+- Parrainage : jusqu'à 200 € pour un chauffeur parrainé, dès que sa première semaine de courses est validée.
+- Contact : WhatsApp au 07 43 76 74 00 (https://wa.me/33743767400).
+
+## Pages principales
+- [Accueil : rattachement à la flotte](https://nordrive-flotte.com/): offre, simulateur de gains, formulaire de rattachement.
+- [Comparatif](https://nordrive-flotte.com/comparatif): rouler seul ou avec une flotte.
+- [Simulateur de gains](https://nordrive-flotte.com/simulateur): revenu net par semaine ou par mois.
+- [Assurance VTC](https://nordrive-flotte.com/assurance): devis RC circulation, flotte, tout risque.
+- [Parrainage](https://nordrive-flotte.com/parrainage): prime jusqu'à 200 €.
+- [FAQ](https://nordrive-flotte.com/faq): questions fréquentes sur le rattachement.
+- [Qui sommes-nous](https://nordrive-flotte.com/qui-sommes-nous)
+- [Contact](https://nordrive-flotte.com/contact)

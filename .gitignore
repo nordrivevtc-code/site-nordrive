@@ -34,3 +34,4 @@ supabase/.env
 supabase/.temp
 
 .vercel
+dist-admin

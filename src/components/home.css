@@ -151,3 +151,112 @@
   .nh-btn { transition: none; }
   .nh-btn:hover { transform: none; }
 }
+
+/* ───────────────────────────────────────────────────────────────
+   Sous-pages (comparatif, assurance, simulateur, parrainage,
+   qui sommes-nous, FAQ, contact) — même design que l'accueil
+   ─────────────────────────────────────────────────────────────── */
+.nh-subhero { position: relative; text-align: center; padding: clamp(28px, 5vw, 56px) 0 clamp(40px, 6vw, 72px); overflow: hidden; }
+.nh-subhero::before { content: ''; position: absolute; left: 50%; top: -60%; width: min(760px, 120%); aspect-ratio: 1; transform: translateX(-50%); background: radial-gradient(closest-side, rgba(229, 193, 88, 0.11), transparent 70%); pointer-events: none; }
+.nh-subhero > * { position: relative; }
+.nh-subhero .nh-wrap { display: flex; flex-direction: column; align-items: center; }
+.nh-subhero .nh-eyebrow::before { display: none; }
+.nh-back { align-self: flex-start; margin-bottom: 18px; color: var(--nh-muted); font-weight: 700; font-size: 14px; }
+.nh-back:hover { color: #fff; }
+.nh-h1--sub { font-size: clamp(2rem, 4.8vw, 3.2rem); max-width: 18ch; margin: 14px auto 16px; }
+.nh-subhero .nh-lead { max-width: 620px; }
+.nh-subhero .nh-lead strong { color: #fff; }
+.nh-cta-band { border-top: 1px solid var(--nh-line); padding: clamp(44px, 6vw, 72px) 0; }
+.nh-center .nh-cta { margin-top: 22px; }
+.nh-h3 { font-size: 1.15rem; font-weight: 800; margin: 0 0 8px; letter-spacing: -0.01em; }
+.nh-card .nh-h3 { color: var(--l-ink); }
+.nh-grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+.nh-btn--block { width: 100%; }
+
+/* Comparatif */
+.nh-cmp { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; align-items: start; }
+.nh-cmp-card { background: var(--l-card); border: 1px solid var(--l-line); border-radius: 22px; padding: clamp(22px, 3vw, 32px); box-shadow: 0 12px 30px rgba(11, 27, 43, 0.06); }
+.nh-cmp-card--good { border-color: #e5c158; box-shadow: 0 16px 40px rgba(201, 154, 34, 0.18); }
+.nh-cmp-card h2 { font-size: 1.35rem; font-weight: 800; color: var(--l-ink); margin: 12px 0 18px; letter-spacing: -0.01em; }
+.nh-cmp-card ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.nh-cmp-card li { padding: 14px 16px; border-radius: 14px; background: var(--l-bg); }
+.nh-cmp-card li b { display: block; font-size: 15px; margin-bottom: 2px; }
+.nh-cmp-card li span { color: var(--l-muted); font-size: 14.5px; line-height: 1.55; }
+.nh-cmp-card--bad li b { color: #b42318; }
+.nh-cmp-card--good li b { color: #8a6200; }
+.nh-tag { display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; padding: 5px 11px; border-radius: 999px; }
+.nh-tag--bad { background: #fde8e6; color: #b42318; }
+.nh-tag--good { background: #fbf0cf; color: #8a6200; }
+
+/* Simulateur */
+.nh-toggle { display: flex; width: fit-content; margin: 0 auto 22px; padding: 4px; gap: 4px; border-radius: 999px; background: #e6ecf4; }
+.nh-toggle button { border: 0; background: transparent; padding: 10px 22px; border-radius: 999px; font: inherit; font-weight: 800; font-size: 14px; color: var(--l-muted); cursor: pointer; min-height: 44px; }
+.nh-toggle button.on { background: #fff; color: var(--l-ink); box-shadow: 0 2px 8px rgba(11, 27, 43, 0.12); }
+.nh-presets { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+.nh-presets button { border: 1px solid var(--l-line); background: #fff; color: var(--l-muted); border-radius: 999px; padding: 8px 14px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; min-height: 40px; }
+.nh-presets button.on { border-color: var(--l-blue); color: var(--l-blue); background: rgba(31, 99, 214, 0.07); }
+.nh-sim-results { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 22px; }
+.nh-sim-box { border-radius: 16px; padding: 18px; border: 1px solid var(--l-line); background: #fff; }
+.nh-sim-box small { display: block; font-size: 12px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--l-muted); }
+.nh-sim-box b { display: block; font-size: clamp(1.7rem, 4vw, 2.3rem); font-weight: 900; letter-spacing: -0.02em; margin: 4px 0; color: var(--l-ink); }
+.nh-sim-box span { font-size: 13px; color: var(--l-muted); line-height: 1.45; }
+.nh-sim-box--bad b { color: #b42318; }
+.nh-sim-box--good { background: #e9f8ef; border-color: #a9e2c0; }
+.nh-sim-box--good small { color: #11763a; }
+.nh-sim-box--good b { color: #0b3b20; }
+.nh-sim-box--good span { color: #2f6a47; }
+.nh-sim-gain { margin: 20px 0 0; padding: 14px 16px; border-radius: 14px; background: #fbf0cf; color: #5c4200; text-align: center; font-size: 15px; line-height: 1.5; }
+.nh-sim-gain strong { color: #11763a; }
+
+/* Étapes en ligne (parrainage) */
+.nh-steps--row { grid-template-columns: repeat(3, 1fr); margin: 0; }
+.nh-light .nh-steps li { background: var(--l-card); border: 1px solid var(--l-line); border-radius: 18px; padding: 18px; }
+.nh-light .nh-steps b { color: var(--l-ink); }
+.nh-light .nh-steps span { color: var(--l-muted); }
+
+/* Formulaires (thème sombre par défaut, clair dans .nh-light) */
+.nh-formcard { background: linear-gradient(160deg, rgba(30, 44, 62, 0.9), rgba(12, 19, 29, 0.95)); border: 1px solid rgba(229, 193, 88, 0.3); border-radius: 26px; padding: clamp(22px, 4vw, 36px); max-width: 600px; }
+.nh-or { display: flex; align-items: center; gap: 12px; margin: 22px 0 18px; color: var(--nh-muted); font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; }
+.nh-or::before, .nh-or::after { content: ''; flex: 1; height: 1px; background: var(--nh-line); }
+.nh-form { display: grid; gap: 16px; }
+.nh-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.nh-label { display: block; font-size: 13px; font-weight: 700; margin-bottom: 6px; color: #dbe4f0; }
+.nh-input { width: 100%; min-height: 50px; padding: 0 14px; border-radius: 12px; border: 1px solid var(--nh-line); background: rgba(255, 255, 255, 0.06); color: #fff; font: inherit; font-size: 16px; }
+textarea.nh-input { padding: 12px 14px; min-height: 100px; resize: vertical; }
+.nh-input::placeholder { color: #7f8ea3; }
+.nh-input:focus { outline: 2px solid var(--nh-gold); outline-offset: 1px; border-color: transparent; }
+.nh-light .nh-label { color: var(--l-ink); }
+.nh-light .nh-input { background: #fff; border-color: var(--l-line); color: var(--l-ink); }
+.nh-light .nh-input:focus { outline-color: var(--l-blue); }
+.nh-alert { background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.4); color: #fca5a5; border-radius: 10px; padding: 10px 12px; font-size: 13.5px; line-height: 1.4; }
+.nh-fine { margin: 0; font-size: 12.5px; color: var(--nh-muted); text-align: center; line-height: 1.5; }
+.nh-done { text-align: center; padding: 8px 0; }
+.nh-done svg { color: #34d399; }
+.nh-done h2 { margin: 10px 0 8px; font-size: 1.5rem; font-weight: 800; color: #fff; }
+.nh-light .nh-done h2 { color: var(--l-ink); }
+.nh-done p { color: var(--nh-muted); line-height: 1.6; margin: 0 0 8px; }
+.nh-light .nh-done p { color: var(--l-muted); }
+.nh-done .nh-btn { margin-top: 14px; }
+
+/* Qui sommes-nous */
+.nh-founder { display: grid; grid-template-columns: auto 1fr; gap: clamp(22px, 4vw, 44px); align-items: center; }
+.nh-avatars { display: flex; }
+.nh-avatars span { width: 92px; height: 92px; border-radius: 50%; display: grid; place-items: center; font-size: 2rem; font-weight: 900; color: #1b1305; background: linear-gradient(135deg, #fbe5a9, #e5c158 55%, #b88514); border: 3px solid #0b1119; }
+.nh-avatars span + span { margin-left: -26px; background: linear-gradient(135deg, #fff, #dde5ef); }
+
+/* Contact */
+.nh-contact { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+.nh-contact-list { list-style: none; margin: 14px 0 20px; padding: 0; display: grid; gap: 14px; }
+.nh-contact-list li { display: flex; gap: 12px; align-items: center; color: var(--l-ink); font-size: 15px; }
+.nh-contact-list svg { color: var(--l-blue); flex: none; }
+.nh-contact-list a { color: var(--l-ink); font-weight: 700; }
+
+@media (max-width: 900px) {
+  .nh-cmp, .nh-grid-2, .nh-contact, .nh-sim-results { grid-template-columns: 1fr; }
+  .nh-steps--row { grid-template-columns: 1fr; }
+  .nh-founder { grid-template-columns: 1fr; text-align: center; justify-items: center; }
+}
+@media (max-width: 560px) {
+  .nh-fields { grid-template-columns: 1fr; }
+  .nh-back { margin-bottom: 12px; }
+}

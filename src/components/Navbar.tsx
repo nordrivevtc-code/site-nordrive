@@ -13,8 +13,8 @@ import {
 import type { Driver, DriverPayrollWeek } from '../types/fleet';
 
 interface NavbarProps {
-  activeTab: 'site_public' | 'crm_chauffeurs' | 'comptabilite_paie' | 'guide_api' | 'parametres_api';
-  setActiveTab: (tab: 'site_public' | 'crm_chauffeurs' | 'comptabilite_paie' | 'guide_api' | 'parametres_api') => void;
+  activeTab: 'site_public' | 'crm_chauffeurs' | 'statistiques' | 'comptabilite_paie' | 'guide_api' | 'parametres_api';
+  setActiveTab: (tab: 'site_public' | 'crm_chauffeurs' | 'statistiques' | 'comptabilite_paie' | 'guide_api' | 'parametres_api') => void;
   drivers: Driver[];
   payrollWeeks: DriverPayrollWeek[];
 }
@@ -73,6 +73,14 @@ export const Navbar: React.FC<NavbarProps> = ({
                 {leadsCount}
               </span>
             )}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('statistiques')}
+            className={`dd-nav-tab ${activeTab === 'statistiques' ? 'active' : ''}`}
+          >
+            <TrendingUp size={16} />
+            <span>Statistiques</span>
           </button>
 
           <button
