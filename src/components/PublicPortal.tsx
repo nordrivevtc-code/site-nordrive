@@ -1802,7 +1802,8 @@ Bonjour, je souhaite recevoir mon devis d'assurance VTC.`;
 
       </main>
 
-      <ChatWidget />
+      {/* Bulle de discussion : empilée au-dessus des boutons WhatsApp (52 px) et Telegram, à la même hauteur qu'eux + 64 px */}
+      <ChatWidget bottom={isMobile ? (scrolled ? 148 : 84) : 92} />
 
       {/* FOOTER OFFICIEL NORDRIVE VTC */}
       <footer 

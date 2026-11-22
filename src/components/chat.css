@@ -1,5 +1,6 @@
 /* Assistant de discussion : style doré, cohérent avec le site (.nh-*) */
-.nc-root { position: fixed; right: 16px; bottom: 16px; z-index: 900; font-family: inherit; }
+/* Au-dessus des boutons WhatsApp et Telegram (même colonne, à droite) : --nc-bottom est fourni par PublicPortal */
+.nc-root { position: fixed; right: 18px; bottom: var(--nc-bottom, 92px); z-index: 996; font-family: inherit; transition: bottom 0.3s ease; }
 
 .nc-fab {
   display: inline-flex; align-items: center; gap: 8px;
@@ -43,10 +44,9 @@
 .nc-form button:disabled { opacity: 0.45; cursor: not-allowed; }
 
 @media (max-width: 520px) {
-  .nc-root { right: 12px; bottom: 12px; }
   .nc-fab span { display: none; }
   .nc-fab { padding: 14px; }
-  .nc-panel { position: fixed; right: 8px; left: 8px; bottom: 76px; width: auto; height: min(70vh, 560px); }
+  .nc-panel { position: fixed; right: 8px; left: 8px; bottom: calc(var(--nc-bottom, 92px) + 64px); width: auto; height: min(60vh, 520px); }
 }
 
 @media (prefers-reduced-motion: no-preference) {

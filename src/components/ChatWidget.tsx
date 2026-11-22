@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { MessageCircle, Send, X } from 'lucide-react';
 import { track } from '../lib/analytics';
 import './chat.css';
@@ -25,7 +25,8 @@ export function buildPayload(history: Msg[], question: string): Msg[] {
   return recent;
 }
 
-export function ChatWidget() {
+/** `bottom` : hauteur (px) laissée libre sous la bulle, pour ne pas recouvrir les boutons WhatsApp et Telegram. */
+export function ChatWidget({ bottom = 92 }: { bottom?: number }) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Msg[]>([WELCOME]);
   const [input, setInput] = useState('');
@@ -75,7 +76,7 @@ export function ChatWidget() {
   };
 
   return (
-    <div className="nc-root">
+    <div className="nc-root" style={{ '--nc-bottom': `${bottom}px` } as CSSProperties}>
       {open && (
         <section className="nc-panel" role="dialog" aria-label="Assistant Nordrive">
           <header className="nc-head">
