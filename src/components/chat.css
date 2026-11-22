@@ -33,7 +33,8 @@
 .nc-btn:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 .nc-typing { letter-spacing: 3px; opacity: 0.7; }
 
-.nc-chips { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.nc-row { display: flex; flex-direction: column; gap: 8px; }
+.nc-chips { display: flex; flex-direction: column; gap: 8px; margin-top: 2px; }
 .nc-chips button { text-align: left; cursor: pointer; border: 1px solid rgba(229, 193, 88, 0.5); background: transparent; color: #fbe5a9; border-radius: 12px; padding: 9px 12px; font-size: 14px; }
 .nc-chips button:hover { background: rgba(229, 193, 88, 0.12); }
 
