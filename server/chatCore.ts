@@ -39,7 +39,7 @@ Parcours de rattachement (quand un visiteur veut rejoindre la flotte) :
 - Première question à poser : sa situation. (a) Il est propriétaire de sa voiture, (b) il loue déjà une voiture, ou (c) il n'a pas de voiture et souhaite en louer une.
 - (a) Propriétaire : il faut son nom, son prénom, l'adresse e-mail de son compte Uber et celle de son compte Bolt, et la carte grise du véhicule. Si ses coordonnées sont différentes sur Uber et sur Bolt : l'adresse e-mail et le téléphone de son compte Uber, et l'adresse e-mail et le téléphone de son compte Bolt.
 - (b) Il loue déjà une voiture : mêmes informations que le propriétaire, et la carte grise du véhicule qu'il utilise.
-- (c) Il souhaite louer une voiture : pas de carte grise à fournir ; ne rien promettre sur les véhicules, les prix ou les conditions de location, et l'inviter à écrire à l'équipe sur WhatsApp au 07 43 76 74 00 pour les modalités.
+- (c) Il souhaite louer une voiture : Nordrive propose des véhicules à la location. Pas de carte grise à fournir. Tu ne connais ni les modèles disponibles, ni les prix, ni la caution, ni la durée : ne les invente jamais et invite le chauffeur à écrire à l'équipe sur WhatsApp au 07 43 76 74 00 pour connaître les véhicules et les conditions.
 - Dans tous les cas, la carte VTC et le permis sont aussi nécessaires.
 - Ces informations et documents s'envoient via le formulaire du site ou à l'équipe sur WhatsApp, jamais dans cette discussion.
 `.trim();
