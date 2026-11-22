@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { MessageCircle, Send, X } from 'lucide-react';
 import { track } from '../lib/analytics';
+import { splitLinks } from './chatLinks';
 import './chat.css';
 
 interface Msg {
@@ -92,7 +93,22 @@ export function ChatWidget({ bottom = 92 }: { bottom?: number }) {
           <div className="nc-body" aria-live="polite">
             {messages.map((m, i) => (
               <p key={i} className={m.role === 'user' ? 'nc-msg nc-user' : 'nc-msg nc-bot'}>
-                {m.content}
+                {m.role === 'user'
+                  ? m.content
+                  : splitLinks(m.content).map((s, j) =>
+                      s.type === 'text' ? (
+                        <span key={j}>{s.text}</span>
+                      ) : (
+                        <a
+                          key={j}
+                          className="nc-btn"
+                          href={s.href}
+                          {...(s.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+                        >
+                          {s.label}
+                        </a>
+                      ),
+                    )}
               </p>
             ))}
             {busy && <p className="nc-msg nc-bot nc-typing" aria-label="L'assistant écrit">…</p>}
