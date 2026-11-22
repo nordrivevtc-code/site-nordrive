@@ -1,0 +1,55 @@
+/* Assistant de discussion : style doré, cohérent avec le site (.nh-*) */
+.nc-root { position: fixed; right: 16px; bottom: 16px; z-index: 900; font-family: inherit; }
+
+.nc-fab {
+  display: inline-flex; align-items: center; gap: 8px;
+  border: 0; cursor: pointer; border-radius: 999px; padding: 14px 18px;
+  background: linear-gradient(135deg, #fbe5a9, #e5c158); color: #1a1405; font-weight: 700; font-size: 15px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+.nc-fab:hover { filter: brightness(1.05); }
+.nc-fab:focus-visible, .nc-icon:focus-visible, .nc-chips button:focus-visible, .nc-form button:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+
+.nc-panel {
+  position: absolute; right: 0; bottom: 64px;
+  width: min(380px, calc(100vw - 32px)); height: min(560px, calc(100vh - 110px));
+  display: flex; flex-direction: column; overflow: hidden;
+  background: #121624; color: #f4f6fa; border: 1px solid rgba(229, 193, 88, 0.4); border-radius: 18px;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6);
+}
+
+.nc-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; background: linear-gradient(135deg, #fbe5a9, #e5c158); color: #1a1405; }
+.nc-head strong { display: block; font-size: 16px; }
+.nc-head span { font-size: 12px; opacity: 0.8; }
+.nc-icon { border: 0; background: transparent; color: inherit; cursor: pointer; padding: 6px; border-radius: 8px; display: inline-flex; }
+
+.nc-body { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.nc-msg { margin: 0; padding: 10px 13px; border-radius: 14px; font-size: 14.5px; line-height: 1.45; max-width: 88%; white-space: pre-wrap; overflow-wrap: anywhere; }
+.nc-bot { background: rgba(255, 255, 255, 0.08); align-self: flex-start; border-bottom-left-radius: 4px; }
+.nc-user { background: #e5c158; color: #1a1405; align-self: flex-end; border-bottom-right-radius: 4px; }
+.nc-typing { letter-spacing: 3px; opacity: 0.7; }
+
+.nc-chips { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.nc-chips button { text-align: left; cursor: pointer; border: 1px solid rgba(229, 193, 88, 0.5); background: transparent; color: #fbe5a9; border-radius: 12px; padding: 9px 12px; font-size: 14px; }
+.nc-chips button:hover { background: rgba(229, 193, 88, 0.12); }
+
+.nc-note { margin: 0; padding: 8px 14px; font-size: 11.5px; line-height: 1.4; color: #a9b6c7; border-top: 1px solid rgba(255, 255, 255, 0.1); }
+.nc-note a { color: #fbe5a9; }
+
+.nc-form { display: flex; gap: 8px; padding: 10px 12px 12px; border-top: 1px solid rgba(255, 255, 255, 0.1); }
+.nc-form input { flex: 1; min-width: 0; background: rgba(255, 255, 255, 0.07); color: #f4f6fa; border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 12px; padding: 11px 12px; font-size: 16px; }
+.nc-form input:focus { outline: 2px solid #e5c158; border-color: transparent; }
+.nc-form button { border: 0; cursor: pointer; border-radius: 12px; padding: 0 14px; background: #e5c158; color: #1a1405; display: inline-flex; align-items: center; }
+.nc-form button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+@media (max-width: 520px) {
+  .nc-root { right: 12px; bottom: 12px; }
+  .nc-fab span { display: none; }
+  .nc-fab { padding: 14px; }
+  .nc-panel { position: fixed; right: 8px; left: 8px; bottom: 76px; width: auto; height: min(70vh, 560px); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .nc-panel { animation: nc-in 0.18s ease-out; }
+  @keyframes nc-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+}

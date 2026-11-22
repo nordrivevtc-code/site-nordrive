@@ -21,6 +21,7 @@ import { track, trackOnce } from '../lib/analytics';
 import { getAcquisition } from '../lib/acquisition';
 import { apiEnabled, SECURE_DOC_TYPES, sendMessage, submitApplicationSecure, submitMessageSecure } from '../lib/api';
 import { CustomCursor } from './CustomCursor';
+import { ChatWidget } from './ChatWidget';
 import { SignaturePad } from './SignaturePad';
 
 interface PublicPortalProps {
@@ -1800,6 +1801,8 @@ Bonjour, je souhaite recevoir mon devis d'assurance VTC.`;
         </section>
 
       </main>
+
+      <ChatWidget />
 
       {/* FOOTER OFFICIEL NORDRIVE VTC */}
       <footer 
