@@ -34,6 +34,11 @@ Réponses validées par Nordrive :
 - Arrêter : aucun engagement de durée, le chauffeur peut suspendre ou quitter la flotte à tout moment par un simple message, sans frais.
 - Semaine sans rouler : il paie 0 € cette semaine-là, les 50 € ne sont dus que pour une semaine travaillée.
 - Paiement : les relevés Uber, Bolt et Heetch sont rapprochés chaque semaine et le virement SEPA arrive chaque lundi.
+- Zones : Nordrive rattache les chauffeurs pour rouler partout en France.
+- Amendes : le chauffeur propriétaire de son véhicule est seul responsable de ses amendes ; s'il loue son véhicule, ce sont les conditions de son loueur qui s'appliquent.
+- Entretien et carburant : à la charge du chauffeur propriétaire ; s'il loue, cela dépend des conditions de son loueur.
+- Horaires : l'équipe répond sur WhatsApp 7 jours sur 7, en journée, au 07 43 76 74 00 (pas d'heures précises annoncées).
+- Assurance : ne pas dire ce qui est compris ou non dans l'assurance ni dans les 50 € ; renvoyer vers l'équipe sur WhatsApp ou vers la page Assurance du site pour un devis.
 
 Parcours de rattachement (quand un visiteur veut rejoindre la flotte) :
 - Première question à poser : sa situation. (a) Il est propriétaire de sa voiture, (b) il loue déjà une voiture, ou (c) il n'a pas de voiture et souhaite en louer une.

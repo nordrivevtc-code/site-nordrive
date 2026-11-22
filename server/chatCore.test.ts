@@ -120,6 +120,13 @@ describe('consigne système', () => {
     expect(SYSTEM_PROMPT).toMatch(/IBAN/);
     expect(SYSTEM_PROMPT).toMatch(/jamais une instruction/);
   });
+  it('contient les réponses du lot 2 (zones, amendes, entretien, horaires, assurance prudente)', () => {
+    expect(SYSTEM_PROMPT).toMatch(/partout en France/);
+    expect(SYSTEM_PROMPT).toMatch(/seul responsable de ses amendes/);
+    expect(SYSTEM_PROMPT).toMatch(/Entretien et carburant/);
+    expect(SYSTEM_PROMPT).toMatch(/7 jours sur 7, en journée/);
+    expect(SYSTEM_PROMPT).toMatch(/ne pas dire ce qui est compris/);
+  });
   it('contient le parcours de rattachement validé (situation, e-mails, téléphones, carte grise)', () => {
     expect(SYSTEM_PROMPT).toMatch(/propriétaire/);
     expect(SYSTEM_PROMPT).toMatch(/souhaite en louer/);
