@@ -1,4 +1,6 @@
 # MÉMOIRE DU PROJET — SITE WEB NORDRIVE VTC (`app-site-nordrive`)
+> **Note (réorganisation)** : l'ancien CRM est maintenant dans -porter-phase2/ (référence, non compilé) ; src/ ne contient plus que le site public. Les chemins ci-dessous ont été mis à jour. Les consignes pour les assistants de code sont dans CLAUDE.md.
+
 
 > **Ce fichier est la mémoire vivante et opérationnelle permanente du site internet Nordrive VTC.**  
 > Tout agent Antigravity, Gemini ou développeur qui ouvre ce dossier (sur PC, Mac ou Linux) doit lire et appliquer rigoureusement les directives ci-dessous.  
@@ -108,7 +110,7 @@ Le design est directement calqué sur le **flyer officiel Nordrive VTC**, avec u
 - **Tableau de bord** : onglet admin « Statistiques » (`AudienceDashboard.tsx`) : inscrits, courbe 30 jours, sources, parcours CRM, villes, et le tableau de bord de l'outil de mesure intégré via `VITE_ANALYTICS_DASHBOARD_URL`.
 - **À compléter côté Plausible** : déclarer chaque événement ci-dessus comme « Goal » du même nom. Mentionner l'outil de mesure dans la politique de confidentialité.
 ## 11. Rattachement Uber & Bolt dans le CRM (novembre 2026)
-- Composant `src/components/FleetEnrollment.tsx`, affiché en haut de la fiche chauffeur (`DriverCRM.tsx`). Processus réel de Nordrive : **Uber Fleet** = prénom, nom, e-mail, téléphone (Uber invite le chauffeur automatiquement) ; **Bolt Fleet** = e-mail et téléphone, puis Bolt génère un lien à copier et envoyer au chauffeur.
+- Composant `a-porter-phase2/crm/FleetEnrollment.tsx`, affiché en haut de la fiche chauffeur (`DriverCRM.tsx`). Processus réel de Nordrive : **Uber Fleet** = prénom, nom, e-mail, téléphone (Uber invite le chauffeur automatiquement) ; **Bolt Fleet** = e-mail et téléphone, puis Bolt génère un lien à copier et envoyer au chauffeur.
 - Chaque valeur a un bouton « Copier ». Le lien Bolt se colle dans un champ (validé) puis part sur WhatsApp en un clic, avec message prêt. « Prévenir le chauffeur » (Uber), « Demander l'e-mail » si absent, « Corriger » les informations.
 - Suivi dans `Driver.platformEnrollment` (date d'envoi Uber / lien Bolt) et journal d'activité. **Rien n'est automatique** : chaque envoi est un clic de Nordrive (contrôle humain). Pas d'API Uber/Bolt publique d'invitation trouvée (à demander aux contacts Uber et Bolt).
 - Adresses des portails Uber/Bolt Fleet : à saisir une fois dans « Liens de mes portails » (stockées dans le navigateur de l'admin).

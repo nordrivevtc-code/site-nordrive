@@ -1,0 +1,8 @@
+{
+  "recommendations": [
+    "oxc.oxc-vscode",
+    "vitest.explorer",
+    "editorconfig.editorconfig",
+    "supabase.vscode-supabase-extension"
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "folders": [{ "name": "Nordrive", "path": "." }],
+  "settings": {
+    "files.exclude": { "node_modules": true, "dist": true, "dist-admin": true, ".git": true },
+    "search.exclude": { "node_modules": true, "dist": true, "dist-admin": true, "package-lock.json": true, "assets-archive": true },
+    "typescript.tsdk": "node_modules/typescript/lib",
+    "explorer.fileNesting.enabled": true,
+    "explorer.fileNesting.patterns": { "*.tsx": "${capture}.css, ${capture}.test.ts", "package.json": "package-lock.json, tsconfig*.json, vite.config.ts, vitest.config.ts", "CLAUDE.md": "AGENTS.md, GEMINI.md" },
+    "editor.formatOnSave": false,
+    "files.insertFinalNewline": true
+  },
+  "tasks": {
+    "version": "2.0.0",
+    "tasks": [
+      { "label": "Site : lancer (dev)", "type": "npm", "script": "dev", "isBackground": true, "problemMatcher": [] },
+      { "label": "Administration : lancer (dev)", "type": "npm", "script": "dev:admin", "isBackground": true, "problemMatcher": [] },
+      { "label": "Fonctions serveur simulées", "type": "npm", "script": "dev:api", "isBackground": true, "problemMatcher": [] },
+      { "label": "Vérifier (compilation + tests)", "type": "npm", "script": "check", "problemMatcher": ["$tsc"], "group": { "kind": "test", "isDefault": true } },
+      { "label": "Construire le site", "type": "npm", "script": "build", "problemMatcher": ["$tsc"], "group": { "kind": "build", "isDefault": true } },
+      { "label": "Aperçu du site construit", "type": "npm", "script": "serve:dist", "isBackground": true, "problemMatcher": [] }
+    ]
+  },
+  "extensions": {
+    "recommendations": ["oxc.oxc-vscode", "vitest.explorer", "editorconfig.editorconfig", "supabase.vscode-supabase-extension"]
+  }
+}
