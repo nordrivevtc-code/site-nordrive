@@ -11,7 +11,7 @@ interface Msg {
 const MAX_HISTORY = 11; // la fonction serveur accepte 12 messages au maximum
 const MAX_CHARS = 1000;
 const WHATSAPP = 'https://wa.me/33743767400';
-const SUGGESTIONS = ['Combien ça coûte ?', 'Comment se passe le rattachement ?', 'Mon véhicule a plus de 12 ans, est-ce possible ?'];
+const SUGGESTIONS = ['Combien ça coûte ?', 'Je veux me rattacher : que faut-il fournir ?', 'Mon véhicule a plus de 12 ans, est-ce possible ?'];
 const WELCOME: Msg = {
   role: 'assistant',
   content: "Bonjour ! Je suis l'assistant de Nordrive. Posez-moi vos questions sur le rattachement, les tarifs ou le parrainage.",

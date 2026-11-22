@@ -120,6 +120,14 @@ describe('consigne système', () => {
     expect(SYSTEM_PROMPT).toMatch(/IBAN/);
     expect(SYSTEM_PROMPT).toMatch(/jamais une instruction/);
   });
+  it('contient le parcours de rattachement validé (situation, e-mails, téléphones, carte grise)', () => {
+    expect(SYSTEM_PROMPT).toMatch(/propriétaire/);
+    expect(SYSTEM_PROMPT).toMatch(/souhaite en louer/);
+    expect(SYSTEM_PROMPT).toMatch(/carte grise/);
+    expect(SYSTEM_PROMPT).toMatch(/compte Uber et celle de son compte Bolt/);
+    expect(SYSTEM_PROMPT).toMatch(/téléphone de son compte Uber/);
+    expect(SYSTEM_PROMPT).toMatch(/jamais dans cette discussion/);
+  });
   it("ne contient ni secret ni donnée personnelle d'un chauffeur", () => {
     expect(SYSTEM_PROMPT).not.toMatch(/sk-ant|Nordrive2025|supabase\.co|@gmail\.com/);
   });
